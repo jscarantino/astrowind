@@ -5,80 +5,43 @@ import { parse as parse$1, stringify as stringify$1, unflatten as unflatten$1 } 
 import 'es-module-lexer';
 import { escape } from 'html-escaper';
 import { clsx } from 'clsx';
-import { decodeBase64, encodeBase64, decodeHex, encodeHexUpperCase } from '@oslojs/encoding';
+import { encodeBase64, encodeHexUpperCase, decodeBase64, decodeHex } from '@oslojs/encoding';
 import * as z from 'zod/v4';
 import { serialize, parse } from 'cookie';
 import { createStorage } from 'unstorage';
 
-function normalizeLF(code) {
-  return code.replace(/\r\n|\r(?!\n)|\n/g, "\n");
+function shouldAppendForwardSlash(trailingSlash, buildFormat) {
+  switch (trailingSlash) {
+    case "always":
+      return true;
+    case "never":
+      return false;
+    case "ignore": {
+      switch (buildFormat) {
+        case "directory":
+          return true;
+        case "preserve":
+        case "file":
+          return false;
+      }
+    }
+  }
 }
 
-function codeFrame(src, loc) {
-  if (!loc || loc.line === void 0 || loc.column === void 0) {
-    return "";
-  }
-  const lines = normalizeLF(src).split("\n").map((ln) => ln.replace(/\t/g, "  "));
-  const visibleLines = [];
-  for (let n = -2; n <= 2; n++) {
-    if (lines[loc.line + n]) visibleLines.push(loc.line + n);
-  }
-  let gutterWidth = 0;
-  for (const lineNo of visibleLines) {
-    let w = `> ${lineNo}`;
-    if (w.length > gutterWidth) gutterWidth = w.length;
-  }
-  let output = "";
-  for (const lineNo of visibleLines) {
-    const isFocusedLine = lineNo === loc.line - 1;
-    output += isFocusedLine ? "> " : "  ";
-    output += `${lineNo + 1} | ${lines[lineNo]}
-`;
-    if (isFocusedLine)
-      output += `${Array.from({ length: gutterWidth }).join(" ")}  | ${Array.from({
-        length: loc.column
-      }).join(" ")}^
-`;
-  }
-  return output;
-}
-
-class AstroError extends Error {
-  loc;
-  title;
-  hint;
-  frame;
-  type = "AstroError";
-  constructor(props, options) {
-    const { name, title, message, stack, location, hint, frame } = props;
-    super(message, options);
-    this.title = title;
-    this.name = name;
-    if (message) this.message = message;
-    this.stack = stack ? stack : this.stack;
-    this.loc = location;
-    this.hint = hint;
-    this.frame = frame;
-  }
-  setLocation(location) {
-    this.loc = location;
-  }
-  setName(name) {
-    this.name = name;
-  }
-  setMessage(message) {
-    this.message = message;
-  }
-  setHint(hint) {
-    this.hint = hint;
-  }
-  setFrame(source, location) {
-    this.frame = codeFrame(source, location);
-  }
-  static is(err) {
-    return err?.type === "AstroError";
-  }
-}
+const ASTRO_VERSION = "6.1.4";
+const ASTRO_GENERATOR = `Astro v${ASTRO_VERSION}`;
+const REROUTE_DIRECTIVE_HEADER = "X-Astro-Reroute";
+const REWRITE_DIRECTIVE_HEADER_KEY = "X-Astro-Rewrite";
+const REWRITE_DIRECTIVE_HEADER_VALUE = "yes";
+const NOOP_MIDDLEWARE_HEADER = "X-Astro-Noop";
+const ROUTE_TYPE_HEADER = "X-Astro-Route-Type";
+const DEFAULT_404_COMPONENT = "astro-default-404.astro";
+const REDIRECT_STATUS_CODES = [301, 302, 303, 307, 308, 300, 304];
+const REROUTABLE_STATUS_CODES = [404, 500];
+const clientAddressSymbol = /* @__PURE__ */ Symbol.for("astro.clientAddress");
+const originPathnameSymbol = /* @__PURE__ */ Symbol.for("astro.originPathname");
+const pipelineSymbol = /* @__PURE__ */ Symbol.for("astro.pipeline");
+const responseSentSymbol$1 = /* @__PURE__ */ Symbol.for("astro.responseSent");
 
 const ClientAddressNotAvailable = {
   name: "ClientAddressNotAvailable",
@@ -173,17 +136,71 @@ const NoMatchingImport = {
   message: (componentName) => `Could not render \`${componentName}\`. No matching import has been found for \`${componentName}\`.`,
   hint: "Please make sure the component is properly imported."
 };
+const InvalidComponentArgs = {
+  name: "InvalidComponentArgs",
+  title: "Invalid component arguments.",
+  message: (name) => `Invalid arguments passed to${name ? ` <${name}>` : ""} component.`,
+  hint: "Astro components cannot be rendered directly via function call, such as `Component()` or `{items.map(Component)}`."
+};
 const PageNumberParamNotFound = {
   name: "PageNumberParamNotFound",
   title: "Page number param not found.",
   message: (paramName) => `[paginate()] page number param \`${paramName}\` not found in your filepath.`,
   hint: "Rename your file to `[page].astro` or `[...page].astro`."
 };
+const ImageMissingAlt = {
+  name: "ImageMissingAlt",
+  title: 'Image missing required "alt" property.',
+  message: 'Image missing "alt" property. "alt" text is required to describe important images on the page.',
+  hint: 'Use an empty string ("") for decorative images.'
+};
+const InvalidImageService = {
+  name: "InvalidImageService",
+  title: "Error while loading image service.",
+  message: "There was an error loading the configured image service. Please see the stack trace for more information."
+};
+const FailedToFetchRemoteImageDimensions = {
+  name: "FailedToFetchRemoteImageDimensions",
+  title: "Failed to retrieve remote image dimensions",
+  message: (imageURL) => `Failed to get the dimensions for ${imageURL}.`,
+  hint: "Verify your remote image URL is accurate, and that you are not using `inferSize` with a file located in your `public/` folder."
+};
+const RemoteImageNotAllowed = {
+  name: "RemoteImageNotAllowed",
+  title: "Remote image is not allowed",
+  message: (imageURL) => `Remote image ${imageURL} is not allowed by your image configuration.`,
+  hint: "Update `image.domains` or `image.remotePatterns`, or remove `inferSize` for this image."
+};
 const PrerenderDynamicEndpointPathCollide = {
   name: "PrerenderDynamicEndpointPathCollide",
   title: "Prerendered dynamic endpoint has path collision.",
   message: (pathname) => `Could not render \`${pathname}\` with an \`undefined\` param as the generated path will collide during prerendering. Prevent passing \`undefined\` as \`params\` for the endpoint's \`getStaticPaths()\` function, or add an additional extension to the endpoint's filename.`,
   hint: (filename) => `Rename \`${filename}\` to \`${filename.replace(/\.(?:js|ts)/, (m) => `.json` + m)}\``
+};
+const ExpectedImage = {
+  name: "ExpectedImage",
+  title: "Expected src to be an image.",
+  message: (src, typeofOptions, fullOptions) => `Expected \`src\` property for \`getImage\` or \`<Image />\` to be either an ESM imported image or a string with the path of a remote image. Received \`${src}\` (type: \`${typeofOptions}\`).
+
+Full serialized options received: \`${fullOptions}\`.`,
+  hint: "This error can often happen because of a wrong path. Make sure the path to your image is correct. If you're passing an async function, make sure to call and await it."
+};
+const ExpectedImageOptions = {
+  name: "ExpectedImageOptions",
+  title: "Expected image options.",
+  message: (options) => `Expected getImage() parameter to be an object. Received \`${options}\`.`
+};
+const ExpectedNotESMImage = {
+  name: "ExpectedNotESMImage",
+  title: "Expected image options, not an ESM-imported image.",
+  message: "An ESM-imported image cannot be passed directly to `getImage()`. Instead, pass an object with the image in the `src` property.",
+  hint: "Try changing `getImage(myImage)` to `getImage({ src: myImage })`"
+};
+const NoImageMetadata = {
+  name: "NoImageMetadata",
+  title: "Could not process image metadata.",
+  message: (imagePath) => `Could not process image metadata${imagePath ? ` for \`${imagePath}\`` : ""}.`,
+  hint: "This is often caused by a corrupted or malformed image. Re-exporting the image from your image editor may fix this issue."
 };
 const ResponseSentError = {
   name: "ResponseSentError",
@@ -243,6 +260,21 @@ The static route '${to}' is rendered by the component
 HTML file, which can't be retrieved at runtime by Astro.`,
   hint: (component) => `Add \`export const prerender = false\` to the component '${component}', or use a Astro.redirect().`
 };
+const FontFamilyNotFound = {
+  name: "FontFamilyNotFound",
+  title: "Font family not found",
+  message: (family) => `No data was found for the \`"${family}"\` family passed to the \`<Font>\` component.`,
+  hint: "This is often caused by a typo. Check that the `<Font />` component is using a `cssVariable` specified in your config."
+};
+const UnknownContentCollectionError = {
+  name: "UnknownContentCollectionError",
+  title: "Unknown Content Collection Error."
+};
+const RenderUndefinedEntryError = {
+  name: "RenderUndefinedEntryError",
+  title: "Attempted to render an undefined content collection entry.",
+  hint: "Check if the entry is undefined before passing it to `render()`"
+};
 const ActionsReturnedInvalidDataError = {
   name: "ActionsReturnedInvalidDataError",
   title: "Action handler returned invalid data.",
@@ -274,40 +306,91 @@ const CacheNotEnabled = {
   hint: 'Use an adapter that provides a default cache provider, or set one explicitly: `experimental: { cache: { provider: "..." } }`. See https://docs.astro.build/en/reference/experimental-flags/route-caching/.'
 };
 
-const middlewareSecret = "25cd2b76-48e3-4936-8f52-a553170d4e0e";
-
-function shouldAppendForwardSlash(trailingSlash, buildFormat) {
-  switch (trailingSlash) {
-    case "always":
-      return true;
-    case "never":
-      return false;
-    case "ignore": {
-      switch (buildFormat) {
-        case "directory":
-          return true;
-        case "preserve":
-        case "file":
-          return false;
-      }
-    }
-  }
+function normalizeLF(code) {
+  return code.replace(/\r\n|\r(?!\n)|\n/g, "\n");
 }
 
-const ASTRO_VERSION = "6.1.4";
-const ASTRO_GENERATOR = `Astro v${ASTRO_VERSION}`;
-const REROUTE_DIRECTIVE_HEADER = "X-Astro-Reroute";
-const REWRITE_DIRECTIVE_HEADER_KEY = "X-Astro-Rewrite";
-const REWRITE_DIRECTIVE_HEADER_VALUE = "yes";
-const NOOP_MIDDLEWARE_HEADER = "X-Astro-Noop";
-const ROUTE_TYPE_HEADER = "X-Astro-Route-Type";
-const DEFAULT_404_COMPONENT = "astro-default-404.astro";
-const REDIRECT_STATUS_CODES = [301, 302, 303, 307, 308, 300, 304];
-const REROUTABLE_STATUS_CODES = [404, 500];
-const clientAddressSymbol = /* @__PURE__ */ Symbol.for("astro.clientAddress");
-const originPathnameSymbol = /* @__PURE__ */ Symbol.for("astro.originPathname");
-const pipelineSymbol = /* @__PURE__ */ Symbol.for("astro.pipeline");
-const responseSentSymbol$1 = /* @__PURE__ */ Symbol.for("astro.responseSent");
+function codeFrame(src, loc) {
+  if (!loc || loc.line === void 0 || loc.column === void 0) {
+    return "";
+  }
+  const lines = normalizeLF(src).split("\n").map((ln) => ln.replace(/\t/g, "  "));
+  const visibleLines = [];
+  for (let n = -2; n <= 2; n++) {
+    if (lines[loc.line + n]) visibleLines.push(loc.line + n);
+  }
+  let gutterWidth = 0;
+  for (const lineNo of visibleLines) {
+    let w = `> ${lineNo}`;
+    if (w.length > gutterWidth) gutterWidth = w.length;
+  }
+  let output = "";
+  for (const lineNo of visibleLines) {
+    const isFocusedLine = lineNo === loc.line - 1;
+    output += isFocusedLine ? "> " : "  ";
+    output += `${lineNo + 1} | ${lines[lineNo]}
+`;
+    if (isFocusedLine)
+      output += `${Array.from({ length: gutterWidth }).join(" ")}  | ${Array.from({
+        length: loc.column
+      }).join(" ")}^
+`;
+  }
+  return output;
+}
+
+class AstroError extends Error {
+  loc;
+  title;
+  hint;
+  frame;
+  type = "AstroError";
+  constructor(props, options) {
+    const { name, title, message, stack, location, hint, frame } = props;
+    super(message, options);
+    this.title = title;
+    this.name = name;
+    if (message) this.message = message;
+    this.stack = stack ? stack : this.stack;
+    this.loc = location;
+    this.hint = hint;
+    this.frame = frame;
+  }
+  setLocation(location) {
+    this.loc = location;
+  }
+  setName(name) {
+    this.name = name;
+  }
+  setMessage(message) {
+    this.message = message;
+  }
+  setHint(hint) {
+    this.hint = hint;
+  }
+  setFrame(source, location) {
+    this.frame = codeFrame(source, location);
+  }
+  static is(err) {
+    return err?.type === "AstroError";
+  }
+}
+class AstroUserError extends Error {
+  type = "AstroUserError";
+  /**
+   * A message that explains to the user how they can fix the error.
+   */
+  hint;
+  name = "AstroUserError";
+  constructor(message, hint) {
+    super();
+    this.message = message;
+    this.hint = hint;
+  }
+  static is(err) {
+    return err?.type === "AstroUserError";
+  }
+}
 
 function computeFallbackRoute(options) {
   const {
@@ -1700,8 +1783,70 @@ function unescapeHTML(str) {
 }
 
 const AstroJSX = "astro:jsx";
+const Empty = /* @__PURE__ */ Symbol("empty");
+const toSlotName = (slotAttr) => slotAttr;
 function isVNode(vnode) {
   return vnode && typeof vnode === "object" && vnode[AstroJSX];
+}
+function transformSlots(vnode) {
+  if (typeof vnode.type === "string") return vnode;
+  const slots = {};
+  if (isVNode(vnode.props.children)) {
+    const child = vnode.props.children;
+    if (!isVNode(child)) return;
+    if (!("slot" in child.props)) return;
+    const name = toSlotName(child.props.slot);
+    slots[name] = [child];
+    slots[name]["$$slot"] = true;
+    delete child.props.slot;
+    delete vnode.props.children;
+  } else if (Array.isArray(vnode.props.children)) {
+    vnode.props.children = vnode.props.children.map((child) => {
+      if (!isVNode(child)) return child;
+      if (!("slot" in child.props)) return child;
+      const name = toSlotName(child.props.slot);
+      if (Array.isArray(slots[name])) {
+        slots[name].push(child);
+      } else {
+        slots[name] = [child];
+        slots[name]["$$slot"] = true;
+      }
+      delete child.props.slot;
+      return Empty;
+    }).filter((v) => v !== Empty);
+  }
+  Object.assign(vnode.props, slots);
+}
+function markRawChildren(child) {
+  if (typeof child === "string") return markHTMLString(child);
+  if (Array.isArray(child)) return child.map((c) => markRawChildren(c));
+  return child;
+}
+function transformSetDirectives(vnode) {
+  if (!("set:html" in vnode.props || "set:text" in vnode.props)) return;
+  if ("set:html" in vnode.props) {
+    const children = markRawChildren(vnode.props["set:html"]);
+    delete vnode.props["set:html"];
+    Object.assign(vnode.props, { children });
+    return;
+  }
+  if ("set:text" in vnode.props) {
+    const children = vnode.props["set:text"];
+    delete vnode.props["set:text"];
+    Object.assign(vnode.props, { children });
+    return;
+  }
+}
+function createVNode(type, props = {}, key) {
+  const vnode = {
+    [Renderer]: "astro:jsx",
+    [AstroJSX]: true,
+    type,
+    props
+  };
+  transformSetDirectives(vnode);
+  transformSlots(vnode);
+  return vnode;
 }
 
 function resolvePropagationHint(input) {
@@ -2016,6 +2161,13 @@ function shorthash(text) {
 const headAndContentSym = /* @__PURE__ */ Symbol.for("astro.headAndContent");
 function isHeadAndContent(obj) {
   return typeof obj === "object" && obj !== null && !!obj[headAndContentSym];
+}
+function createHeadAndContent(head, content) {
+  return {
+    [headAndContentSym]: true,
+    head,
+    content
+  };
 }
 function createThinHead() {
   return {
@@ -2386,6 +2538,9 @@ function renderAllHeadContent(result) {
   }
   return markHTMLString(content);
 }
+function renderHead() {
+  return createRenderInstruction({ type: "head" });
+}
 function maybeRenderHead() {
   return createRenderInstruction({ type: "maybe-head" });
 }
@@ -2577,6 +2732,9 @@ function mergeSlotInstructions(target, source) {
   return target;
 }
 function renderSlot(result, slotted, fallback) {
+  if (!slotted && fallback) {
+    return renderSlot(result, fallback);
+  }
   return {
     async render(destination) {
       await renderChild(destination, typeof slotted === "function" ? slotted(result) : slotted);
@@ -2602,7 +2760,7 @@ async function renderSlotToString(result, slotted, fallback) {
       }
     }
   };
-  const renderInstance = renderSlot(result, slotted);
+  const renderInstance = renderSlot(result, slotted, fallback);
   await renderInstance.render(temporaryDestination);
   return markHTMLString(new SlotString(content, instructions));
 }
@@ -4432,6 +4590,15 @@ async function renderPage(result, componentFactory, props, children, streaming, 
 "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_".split("").reduce((v, c) => (v[c.charCodeAt(0)] = c, v), []);
 "-0123456789_".split("").reduce((v, c) => (v[c.charCodeAt(0)] = c, v), []);
 
+function __astro_tag_component__(Component, rendererName) {
+  if (!Component) return;
+  if (typeof Component !== "function") return;
+  Object.defineProperty(Component, Renderer, {
+    value: rendererName,
+    enumerable: false,
+    writable: false
+  });
+}
 function spreadAttributes(values = {}, _name, { class: scopedClassName } = {}) {
   let output = "";
   if (scopedClassName) {
@@ -5460,6 +5627,12 @@ function deserializeRouteInfo(rawRouteInfo) {
     routeData: deserializeRouteData(rawRouteInfo.routeData)
   };
 }
+function queuePoolSize(config) {
+  return config?.poolSize ?? 1e3;
+}
+function queueRenderingEnabled(config) {
+  return config?.enabled ?? false;
+}
 
 class NodePool {
   textPool = [];
@@ -5654,6 +5827,10 @@ class NodePool {
       releasedDropped: 0
     };
   }
+}
+function newNodePool(config) {
+  const poolSize = queuePoolSize(config);
+  return new NodePool(poolSize);
 }
 
 class HTMLStringCache {
@@ -8360,27 +8537,6 @@ function createStylesheetElementSet(stylesheets, base, assetsPrefix, queryParams
     stylesheets.map((s) => createStylesheetElement(s, base, assetsPrefix))
   );
 }
-function createModuleScriptElement(script, base, assetsPrefix, queryParams) {
-  if (script.type === "external") {
-    return createModuleScriptElementWithSrc(script.value, base, assetsPrefix);
-  } else {
-    return {
-      props: {
-        type: "module"
-      },
-      children: script.value
-    };
-  }
-}
-function createModuleScriptElementWithSrc(src, base, assetsPrefix, queryParams) {
-  return {
-    props: {
-      type: "module",
-      src: createAssetLink(src, base, assetsPrefix)
-    },
-    children: ""
-  };
-}
 
 function createConsoleLogger(level) {
   return new Logger({
@@ -8389,64 +8545,314 @@ function createConsoleLogger(level) {
   });
 }
 
-class AppPipeline extends Pipeline {
+const slotName = (str) => str.trim().replace(/[-_]([a-z])/g, (_, w) => w.toUpperCase());
+async function check(Component, props, { default: children = null, ...slotted } = {}) {
+  if (typeof Component !== "function") return false;
+  const slots = {};
+  for (const [key, value] of Object.entries(slotted)) {
+    const name = slotName(key);
+    slots[name] = value;
+  }
+  try {
+    const result = await Component({ ...props, ...slots, children });
+    return result[AstroJSX];
+  } catch (e) {
+    throwEnhancedErrorIfMdxComponent(e, Component);
+  }
+  return false;
+}
+async function renderToStaticMarkup(Component, props = {}, { default: children = null, ...slotted } = {}) {
+  const slots = {};
+  for (const [key, value] of Object.entries(slotted)) {
+    const name = slotName(key);
+    slots[name] = value;
+  }
+  const { result } = this;
+  try {
+    const html = await renderJSX(result, createVNode(Component, { ...props, ...slots, children }));
+    return { html };
+  } catch (e) {
+    throwEnhancedErrorIfMdxComponent(e, Component);
+    throw e;
+  }
+}
+function throwEnhancedErrorIfMdxComponent(error, Component) {
+  if (Component[/* @__PURE__ */ Symbol.for("mdx-component")]) {
+    if (AstroUserError.is(error)) return;
+    error.title = error.name;
+    error.hint = `This issue often occurs when your MDX component encounters runtime errors.`;
+    throw error;
+  }
+}
+const renderer = {
+  name: "astro:jsx",
+  check,
+  renderToStaticMarkup
+};
+var server_default = renderer;
+
+const renderers = [Object.assign({"name":"astro:jsx","serverEntrypoint":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astrojs+mdx@5.0.3_astro@6.1.4_@netlify+blobs@10.7.4_@types+node@25.5.2_jiti@1.21.7_lig_3ec9229e77a71327cbe218060510ff43/node_modules/@astrojs/mdx/dist/server.js"}, { ssr: server_default }),];
+
+const serializedData = [{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/404","isIndex":false,"type":"page","pattern":"^\\/404$","segments":[[{"content":"404","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/404.astro","pathname":"/404","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/about","isIndex":false,"type":"page","pattern":"^\\/about$","segments":[[{"content":"about","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/about.astro","pathname":"/about","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/contact","isIndex":false,"type":"page","pattern":"^\\/contact$","segments":[[{"content":"contact","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/contact.astro","pathname":"/contact","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/contact1","isIndex":false,"type":"page","pattern":"^\\/contact1$","segments":[[{"content":"contact1","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/contact1.astro","pathname":"/contact1","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/garden/[...blog]/[category]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?\\/([^/]+?)(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"category","dynamic":true,"spread":false}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","category","...page"],"component":"src/pages/garden/[...blog]/[category]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/garden/[...blog]/[tag]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?\\/([^/]+?)(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"tag","dynamic":true,"spread":false}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","tag","...page"],"component":"src/pages/garden/[...blog]/[tag]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/garden/[...blog]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","...page"],"component":"src/pages/garden/[...blog]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/garden","isIndex":true,"type":"page","pattern":"^\\/garden$","segments":[[{"content":"garden","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/garden/index.astro","pathname":"/garden","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/garden/[...blog]","isIndex":true,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}]],"params":["...blog"],"component":"src/pages/garden/[...blog]/index.astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/homes/personal","isIndex":false,"type":"page","pattern":"^\\/homes\\/personal$","segments":[[{"content":"homes","dynamic":false,"spread":false}],[{"content":"personal","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/homes/personal.astro","pathname":"/homes/personal","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/homes/startup","isIndex":false,"type":"page","pattern":"^\\/homes\\/startup$","segments":[[{"content":"homes","dynamic":false,"spread":false}],[{"content":"startup","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/homes/startup.astro","pathname":"/homes/startup","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/landing/click-through","isIndex":false,"type":"page","pattern":"^\\/landing\\/click-through$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"click-through","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/click-through.astro","pathname":"/landing/click-through","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/landing/lead-generation","isIndex":false,"type":"page","pattern":"^\\/landing\\/lead-generation$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"lead-generation","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/lead-generation.astro","pathname":"/landing/lead-generation","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/landing/pre-launch","isIndex":false,"type":"page","pattern":"^\\/landing\\/pre-launch$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"pre-launch","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/pre-launch.astro","pathname":"/landing/pre-launch","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/landing/product","isIndex":false,"type":"page","pattern":"^\\/landing\\/product$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"product","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/product.astro","pathname":"/landing/product","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/landing/sales","isIndex":false,"type":"page","pattern":"^\\/landing\\/sales$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"sales","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/sales.astro","pathname":"/landing/sales","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/landing/subscription","isIndex":false,"type":"page","pattern":"^\\/landing\\/subscription$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"subscription","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/subscription.astro","pathname":"/landing/subscription","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/pricing","isIndex":false,"type":"page","pattern":"^\\/pricing$","segments":[[{"content":"pricing","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/pricing.astro","pathname":"/pricing","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/privacy","isIndex":false,"type":"page","pattern":"^\\/privacy$","segments":[[{"content":"privacy","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/privacy.md","pathname":"/privacy","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/rss.xml","isIndex":false,"type":"endpoint","pattern":"^\\/rss\\.xml$","segments":[[{"content":"rss.xml","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/rss.xml.ts","pathname":"/rss.xml","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/services","isIndex":false,"type":"page","pattern":"^\\/services$","segments":[[{"content":"services","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/services.astro","pathname":"/services","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/terms","isIndex":false,"type":"page","pattern":"^\\/terms$","segments":[[{"content":"terms","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/terms.md","pathname":"/terms","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/","isIndex":true,"type":"page","pattern":"^\\/$","segments":[],"params":[],"component":"src/pages/index.astro","pathname":"/","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}}];
+				serializedData.map(deserializeRouteInfo);
+
+const _page0 = () => import('./404_CjIcky6j.mjs');
+const _page1 = () => import('./about_BM5N0Uv9.mjs');
+const _page2 = () => import('./contact_PBNP_6ON.mjs');
+const _page3 = () => import('./contact1_jW-Ndrqv.mjs');
+const _page4 = () => import('./_.._CWTP4hYX.mjs');
+const _page5 = () => import('./_.._ByrkItTj.mjs');
+const _page6 = () => import('./_.._tnrl-_Ey.mjs');
+const _page7 = () => import('./index_DVlgCrcK.mjs');
+const _page8 = () => import('./index_DQBbkACF.mjs');
+const _page9 = () => import('./personal_BgKngFO6.mjs');
+const _page10 = () => import('./startup_BmPv_cVI.mjs');
+const _page11 = () => import('./click-through_p4aO1vMq.mjs');
+const _page12 = () => import('./lead-generation_CHSFP1X8.mjs');
+const _page13 = () => import('./pre-launch_UPxNISzv.mjs');
+const _page14 = () => import('./product_CIVWpyHF.mjs');
+const _page15 = () => import('./sales_D1rIcWXO.mjs');
+const _page16 = () => import('./subscription_TE3t8eyF.mjs');
+const _page17 = () => import('./pricing_CBc_9Rp7.mjs');
+const _page18 = () => import('./privacy_ZSIMzD2X.mjs');
+const _page19 = () => import('./rss_C81XFTUv.mjs');
+const _page20 = () => import('./services_CElrgOZj.mjs');
+const _page21 = () => import('./terms_BJfauRqL.mjs');
+const _page22 = () => import('./index_b0ZlcCa2.mjs');
+const pageMap = new Map([
+    ["src/pages/404.astro", _page0],
+    ["src/pages/about.astro", _page1],
+    ["src/pages/contact.astro", _page2],
+    ["src/pages/contact1.astro", _page3],
+    ["src/pages/garden/[...blog]/[category]/[...page].astro", _page4],
+    ["src/pages/garden/[...blog]/[tag]/[...page].astro", _page5],
+    ["src/pages/garden/[...blog]/[...page].astro", _page6],
+    ["src/pages/garden/index.astro", _page7],
+    ["src/pages/garden/[...blog]/index.astro", _page8],
+    ["src/pages/homes/personal.astro", _page9],
+    ["src/pages/homes/startup.astro", _page10],
+    ["src/pages/landing/click-through.astro", _page11],
+    ["src/pages/landing/lead-generation.astro", _page12],
+    ["src/pages/landing/pre-launch.astro", _page13],
+    ["src/pages/landing/product.astro", _page14],
+    ["src/pages/landing/sales.astro", _page15],
+    ["src/pages/landing/subscription.astro", _page16],
+    ["src/pages/pricing.astro", _page17],
+    ["src/pages/privacy.md", _page18],
+    ["src/pages/rss.xml.ts", _page19],
+    ["src/pages/services.astro", _page20],
+    ["src/pages/terms.md", _page21],
+    ["src/pages/index.astro", _page22]
+]);
+
+const _manifest = deserializeManifest(({"rootDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/","cacheDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.astro/","outDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/dist/","srcDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/src/","publicDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/public/","buildClientDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/dist/","buildServerDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/.netlify/build/","adapterName":"@astrojs/netlify","assetsDir":"_astro","routes":[{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"type":"page","component":"_server-islands.astro","params":["name"],"segments":[[{"content":"_server-islands","dynamic":false,"spread":false}],[{"content":"name","dynamic":true,"spread":false}]],"pattern":"^\\/_server-islands\\/([^/]+?)$","prerender":false,"isIndex":false,"fallbackRoutes":[],"route":"/_server-islands/[name]","origin":"internal","distURL":[],"_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/404","isIndex":false,"type":"page","pattern":"^\\/404$","segments":[[{"content":"404","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/404.astro","pathname":"/404","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/about","isIndex":false,"type":"page","pattern":"^\\/about$","segments":[[{"content":"about","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/about.astro","pathname":"/about","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/contact","isIndex":false,"type":"page","pattern":"^\\/contact$","segments":[[{"content":"contact","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/contact.astro","pathname":"/contact","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/contact1","isIndex":false,"type":"page","pattern":"^\\/contact1$","segments":[[{"content":"contact1","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/contact1.astro","pathname":"/contact1","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]/[category]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?\\/([^/]+?)(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"category","dynamic":true,"spread":false}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","category","...page"],"component":"src/pages/garden/[...blog]/[category]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]/[tag]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?\\/([^/]+?)(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"tag","dynamic":true,"spread":false}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","tag","...page"],"component":"src/pages/garden/[...blog]/[tag]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","...page"],"component":"src/pages/garden/[...blog]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden","isIndex":true,"type":"page","pattern":"^\\/garden$","segments":[[{"content":"garden","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/garden/index.astro","pathname":"/garden","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]","isIndex":true,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}]],"params":["...blog"],"component":"src/pages/garden/[...blog]/index.astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/homes/personal","isIndex":false,"type":"page","pattern":"^\\/homes\\/personal$","segments":[[{"content":"homes","dynamic":false,"spread":false}],[{"content":"personal","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/homes/personal.astro","pathname":"/homes/personal","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/homes/startup","isIndex":false,"type":"page","pattern":"^\\/homes\\/startup$","segments":[[{"content":"homes","dynamic":false,"spread":false}],[{"content":"startup","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/homes/startup.astro","pathname":"/homes/startup","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/click-through","isIndex":false,"type":"page","pattern":"^\\/landing\\/click-through$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"click-through","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/click-through.astro","pathname":"/landing/click-through","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/lead-generation","isIndex":false,"type":"page","pattern":"^\\/landing\\/lead-generation$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"lead-generation","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/lead-generation.astro","pathname":"/landing/lead-generation","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/pre-launch","isIndex":false,"type":"page","pattern":"^\\/landing\\/pre-launch$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"pre-launch","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/pre-launch.astro","pathname":"/landing/pre-launch","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/product","isIndex":false,"type":"page","pattern":"^\\/landing\\/product$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"product","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/product.astro","pathname":"/landing/product","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/sales","isIndex":false,"type":"page","pattern":"^\\/landing\\/sales$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"sales","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/sales.astro","pathname":"/landing/sales","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/subscription","isIndex":false,"type":"page","pattern":"^\\/landing\\/subscription$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"subscription","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/subscription.astro","pathname":"/landing/subscription","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/pricing","isIndex":false,"type":"page","pattern":"^\\/pricing$","segments":[[{"content":"pricing","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/pricing.astro","pathname":"/pricing","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/privacy","isIndex":false,"type":"page","pattern":"^\\/privacy$","segments":[[{"content":"privacy","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/privacy.md","pathname":"/privacy","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/rss.xml","isIndex":false,"type":"endpoint","pattern":"^\\/rss\\.xml$","segments":[[{"content":"rss.xml","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/rss.xml.ts","pathname":"/rss.xml","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/services","isIndex":false,"type":"page","pattern":"^\\/services$","segments":[[{"content":"services","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/services.astro","pathname":"/services","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/terms","isIndex":false,"type":"page","pattern":"^\\/terms$","segments":[[{"content":"terms","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/terms.md","pathname":"/terms","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/","isIndex":true,"type":"page","pattern":"^\\/$","segments":[],"params":[],"component":"src/pages/index.astro","pathname":"/","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}}],"serverLike":true,"middlewareMode":"classic","site":"https://astrowind.vercel.app","base":"/","trailingSlash":"never","compressHTML":true,"experimentalQueuedRendering":{"enabled":false,"poolSize":0,"contentCache":false},"componentMetadata":[["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/click-through.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/lead-generation.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/pre-launch.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/product.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/sales.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/subscription.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/privacy.md",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/terms.md",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/about.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/contact.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/contact1.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/[...page].astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/[category]/[...page].astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/[tag]/[...page].astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/index.astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/index.astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/homes/personal.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/homes/startup.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/index.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/pricing.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/services.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/404.astro",{"propagation":"none","containsHead":true}],["\u0000astro:content",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/utils/blog.ts",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/components/blog/RelatedPosts.astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/index@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:pages",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:manifest",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/astro@6.1.4_@netlify+blobs@10.7.4_@types+node@25.5.2_jiti@1.21.7_lightningcss@1.29.3_ro_78b6a56cad01fab3f93aae454299175f/node_modules/astro/dist/entrypoints/prerender.js",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/components/widgets/BlogHighlightedPosts.astro",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/components/widgets/BlogLatestPosts.astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/index@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/[...page]@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/[category]/[...page]@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/[tag]/[...page]@_@astro",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/rss.xml.ts",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/rss.xml@_@ts",{"propagation":"in-tree","containsHead":false}]],"renderers":[],"clientDirectives":[["idle","(()=>{var l=(n,t)=>{let i=async()=>{await(await n())()},e=typeof t.value==\"object\"?t.value:void 0,s={timeout:e==null?void 0:e.timeout};\"requestIdleCallback\"in window?window.requestIdleCallback(i,s):setTimeout(i,s.timeout||200)};(self.Astro||(self.Astro={})).idle=l;window.dispatchEvent(new Event(\"astro:idle\"));})();"],["load","(()=>{var e=async t=>{await(await t())()};(self.Astro||(self.Astro={})).load=e;window.dispatchEvent(new Event(\"astro:load\"));})();"],["media","(()=>{var n=(a,t)=>{let i=async()=>{await(await a())()};if(t.value){let e=matchMedia(t.value);e.matches?i():e.addEventListener(\"change\",i,{once:!0})}};(self.Astro||(self.Astro={})).media=n;window.dispatchEvent(new Event(\"astro:media\"));})();"],["only","(()=>{var e=async t=>{await(await t())()};(self.Astro||(self.Astro={})).only=e;window.dispatchEvent(new Event(\"astro:only\"));})();"],["visible","(()=>{var a=(s,i,o)=>{let r=async()=>{await(await s())()},t=typeof i.value==\"object\"?i.value:void 0,c={rootMargin:t==null?void 0:t.rootMargin},n=new IntersectionObserver(e=>{for(let l of e)if(l.isIntersecting){n.disconnect(),r();break}},c);for(let e of o.children)n.observe(e)};(self.Astro||(self.Astro={})).visible=a;window.dispatchEvent(new Event(\"astro:visible\"));})();"]],"entryModules":{"\u0000virtual:astro:actions/noop-entrypoint":"chunks/noop-entrypoint_BOlrdqWF.mjs","\u0000noop-middleware":"virtual_astro_middleware.mjs","\u0000virtual:astro:session-driver":"chunks/_virtual_astro_session-driver_DjXIZi9n.mjs","\u0000virtual:astro:server-island-manifest":"chunks/_virtual_astro_server-island-manifest_CQQ1F5PF.mjs","\u0000virtual:astro:page:src/pages/404@_@astro":"chunks/404_CjIcky6j.mjs","\u0000virtual:astro:page:src/pages/about@_@astro":"chunks/about_BM5N0Uv9.mjs","\u0000virtual:astro:page:src/pages/contact@_@astro":"chunks/contact_PBNP_6ON.mjs","\u0000virtual:astro:page:src/pages/contact1@_@astro":"chunks/contact1_jW-Ndrqv.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/[category]/[...page]@_@astro":"chunks/_.._CWTP4hYX.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/[tag]/[...page]@_@astro":"chunks/_.._ByrkItTj.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/[...page]@_@astro":"chunks/_.._tnrl-_Ey.mjs","\u0000virtual:astro:page:src/pages/garden/index@_@astro":"chunks/index_DVlgCrcK.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/index@_@astro":"chunks/index_DQBbkACF.mjs","\u0000virtual:astro:page:src/pages/homes/personal@_@astro":"chunks/personal_BgKngFO6.mjs","\u0000virtual:astro:page:src/pages/homes/startup@_@astro":"chunks/startup_BmPv_cVI.mjs","\u0000virtual:astro:page:src/pages/landing/click-through@_@astro":"chunks/click-through_p4aO1vMq.mjs","\u0000virtual:astro:page:src/pages/landing/lead-generation@_@astro":"chunks/lead-generation_CHSFP1X8.mjs","\u0000virtual:astro:page:src/pages/landing/pre-launch@_@astro":"chunks/pre-launch_UPxNISzv.mjs","\u0000virtual:astro:page:src/pages/landing/product@_@astro":"chunks/product_CIVWpyHF.mjs","\u0000virtual:astro:page:src/pages/landing/sales@_@astro":"chunks/sales_D1rIcWXO.mjs","\u0000virtual:astro:page:src/pages/landing/subscription@_@astro":"chunks/subscription_TE3t8eyF.mjs","\u0000virtual:astro:page:src/pages/pricing@_@astro":"chunks/pricing_CBc_9Rp7.mjs","\u0000virtual:astro:page:src/pages/privacy@_@md":"chunks/privacy_ZSIMzD2X.mjs","\u0000virtual:astro:page:src/pages/rss.xml@_@ts":"chunks/rss_C81XFTUv.mjs","\u0000virtual:astro:page:src/pages/services@_@astro":"chunks/services_CElrgOZj.mjs","\u0000virtual:astro:page:src/pages/terms@_@md":"chunks/terms_BJfauRqL.mjs","\u0000virtual:astro:page:src/pages/index@_@astro":"chunks/index_b0ZlcCa2.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/app-store.png":"chunks/app-store_MrASZIIe.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/default.png":"chunks/default_CYIan_vk.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/google-play.png":"chunks/google-play_CbQVenxx.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/hero-image.png":"chunks/hero-image_TOV4tSA1.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/logo.png":"chunks/logo_iBzpVNGv.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/logo.svg":"chunks/logo_M2ICq3Uv.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astrojs+netlify@7.0.6_@types+node@25.5.2_astro@6.1.4_@netlify+blobs@10.7.4_@types+node_0216d6ab6b8cc1a7ee80621168b6966c/node_modules/@astrojs/netlify/dist/image-service.js":"chunks/image-service_C4LPo8S7.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/.astro/content-assets.mjs":"chunks/content-assets_DleWbedO.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/.astro/content-modules.mjs":"chunks/content-modules_3MRWyw36.mjs","\u0000astro:data-layer-content":"chunks/_astro_data-layer-content_nMowf7_8.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/astrowind-template-in-depth.mdx?astroPropagatedAssets":"chunks/astrowind-template-in-depth_CCA04WqU.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/markdown-elements-demo-post.mdx?astroPropagatedAssets":"chunks/markdown-elements-demo-post_Bze5DDTZ.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/astrowind-template-in-depth.mdx":"chunks/astrowind-template-in-depth_Bs3ZZIjO.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/markdown-elements-demo-post.mdx":"chunks/markdown-elements-demo-post_PlJnG_KT.mjs","astro/entrypoints/prerender":"prerender-entry.DyYsfBui.mjs","@astrojs/netlify/ssr-function.js":"entry.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/astro@6.1.4_@netlify+blobs@10.7.4_@types+node@25.5.2_jiti@1.21.7_lightningcss@1.29.3_ro_78b6a56cad01fab3f93aae454299175f/node_modules/astro/components/ClientRouter.astro?astro&type=script&index=0&lang.ts":"_astro/ClientRouter.astro_astro_type_script_index_0_lang.j56hQv-j.js","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-vimeo@0.3.12/node_modules/@astro-community/astro-embed-vimeo/Vimeo.astro?astro&type=script&index=0&lang.ts":"_astro/Vimeo.astro_astro_type_script_index_0_lang.CgRsrQuG.js","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-youtube@0.5.10/node_modules/@astro-community/astro-embed-youtube/YouTube.astro?astro&type=script&index=0&lang.ts":"_astro/YouTube.astro_astro_type_script_index_0_lang.DRTAn-6M.js","astro:scripts/before-hydration.js":""},"inlinedScripts":[["/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-vimeo@0.3.12/node_modules/@astro-community/astro-embed-vimeo/Vimeo.astro?astro&type=script&index=0&lang.ts","class t extends HTMLElement{constructor(){super(...arguments),this.videoId=encodeURIComponent(this.dataset.id)}static{this.preconnected=!1}connectedCallback(){this.addEventListener(\"pointerover\",t.warmConnections,{once:!0}),this.addEventListener(\"click\",e=>this.addIframe(e));const c=this.querySelector(\"a\");if(c){const e=document.createElement(\"button\");e.classList.add(...c.classList.values()),e.setAttribute(\"aria-label\",c.getAttribute(\"aria-label\")),c.replaceWith(e)}}static addPrefetch(c,e){const a=document.createElement(\"link\");a.rel=c,a.href=e,document.head.append(a)}static warmConnections(){t.preconnected||(t.addPrefetch(\"preconnect\",\"https://player.vimeo.com\"),t.addPrefetch(\"preconnect\",\"https://i.vimeocdn.com\"),t.addPrefetch(\"preconnect\",\"https://f.vimeocdn.com\"),t.addPrefetch(\"preconnect\",\"https://fresnel.vimeocdn.com\"),t.preconnected=!0)}addIframe(c){if(this.classList.contains(\"ltv-activated\"))return;c.preventDefault(),this.classList.add(\"ltv-activated\");const e=encodeURIComponent(this.dataset.t||\"0m\"),a=new URLSearchParams(this.dataset.params||[]),n=document.createElement(\"iframe\");n.width=\"640\",n.height=\"360\",n.allow=\"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\",n.allowFullscreen=!0,n.src=`https://player.vimeo.com/video/${this.videoId}?${a.toString()}#t=${e}`,this.append(n)}}customElements.get(\"lite-vimeo\")||customElements.define(\"lite-vimeo\",t);"],["/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-youtube@0.5.10/node_modules/@astro-community/astro-embed-youtube/YouTube.astro?astro&type=script&index=0&lang.ts","class i extends HTMLElement{connectedCallback(){this.videoId=this.getAttribute(\"videoid\");let e=this.querySelector(\".lyt-playbtn,.lty-playbtn\");if(this.playLabel=e&&e.textContent.trim()||this.getAttribute(\"playlabel\")||\"Play\",this.dataset.title=this.getAttribute(\"title\")||\"\",this.style.backgroundImage||(this.style.backgroundImage=`url(\"https://i.ytimg.com/vi/${this.videoId}/hqdefault.jpg\")`,this.upgradePosterImage()),e||(e=document.createElement(\"button\"),e.type=\"button\",e.classList.add(\"lyt-playbtn\",\"lty-playbtn\"),this.append(e)),!e.textContent){const t=document.createElement(\"span\");t.className=\"lyt-visually-hidden\",t.textContent=this.playLabel,e.append(t)}this.addNoscriptIframe(),e.nodeName===\"A\"&&(e.removeAttribute(\"href\"),e.setAttribute(\"tabindex\",\"0\"),e.setAttribute(\"role\",\"button\"),e.addEventListener(\"keydown\",t=>{(t.key===\"Enter\"||t.key===\" \")&&(t.preventDefault(),this.activate())})),this.addEventListener(\"pointerover\",i.warmConnections,{once:!0}),this.addEventListener(\"focusin\",i.warmConnections,{once:!0}),this.addEventListener(\"click\",this.activate),this.needsYTApi=this.hasAttribute(\"js-api\")||navigator.vendor.includes(\"Apple\")||navigator.userAgent.includes(\"Mobi\")}static addPrefetch(e,t,a){const r=document.createElement(\"link\");r.rel=e,r.href=t,a&&(r.as=a),document.head.append(r)}static warmConnections(){i.preconnected||(i.addPrefetch(\"preconnect\",\"https://www.youtube-nocookie.com\"),i.addPrefetch(\"preconnect\",\"https://www.google.com\"),i.addPrefetch(\"preconnect\",\"https://googleads.g.doubleclick.net\"),i.addPrefetch(\"preconnect\",\"https://static.doubleclick.net\"),i.preconnected=!0)}fetchYTPlayerApi(){window.YT||window.YT&&window.YT.Player||(this.ytApiPromise=new Promise((e,t)=>{var a=document.createElement(\"script\");a.src=\"https://www.youtube.com/iframe_api\",a.async=!0,a.onload=r=>{YT.ready(e)},a.onerror=t,this.append(a)}))}async getYTPlayer(){return this.playerPromise||await this.activate(),this.playerPromise}async addYTPlayerIframe(){this.fetchYTPlayerApi(),await this.ytApiPromise;const e=document.createElement(\"div\");this.append(e);const t=Object.fromEntries(this.getParams().entries());this.playerPromise=new Promise(a=>{let r=new YT.Player(e,{width:\"100%\",videoId:this.videoId,playerVars:t,events:{onReady:n=>{n.target.playVideo(),a(r)}}})})}addNoscriptIframe(){const e=this.createBasicIframe(),t=document.createElement(\"noscript\");t.innerHTML=e.outerHTML,this.append(t)}getParams(){const e=new URLSearchParams(this.getAttribute(\"params\")||[]);return e.append(\"autoplay\",\"1\"),e.append(\"playsinline\",\"1\"),e}async activate(){if(this.classList.contains(\"lyt-activated\"))return;if(this.classList.add(\"lyt-activated\"),this.needsYTApi)return this.addYTPlayerIframe(this.getParams());const e=this.createBasicIframe();this.append(e),e.focus()}createBasicIframe(){const e=document.createElement(\"iframe\");return e.width=560,e.height=315,e.title=this.playLabel,e.allow=\"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\",e.allowFullscreen=!0,e.referrerPolicy=\"strict-origin-when-cross-origin\",e.src=`https://www.youtube-nocookie.com/embed/${encodeURIComponent(this.videoId)}?${this.getParams().toString()}`,e}upgradePosterImage(){setTimeout(()=>{const e=`https://i.ytimg.com/vi_webp/${this.videoId}/sddefault.webp`,t=new Image;t.fetchPriority=\"low\",t.referrerpolicy=\"origin\",t.src=e,t.onload=a=>{a.target.naturalHeight==90&&a.target.naturalWidth==120||(this.style.backgroundImage=`url(\"${e}\")`)}},100)}}customElements.define(\"lite-youtube\",i);"]],"assets":["/_headers","/robots.txt","/_astro/ClientRouter.astro_astro_type_script_index_0_lang.j56hQv-j.js","/decapcms/config.yml","/decapcms/index.html","/_astro/apple-touch-icon.DHIlG7dp.png","/_astro/favicon.vp_fBu0c.svg","/_astro/app-store.t3tG4Jz3.png","/_astro/logo.a9g0Q0nj.png","/_astro/google-play.ISTMcpLO.png","/_astro/default.CZ816Hke.png","/_astro/hero-image.DwIC_L_T.png","/_astro/logo.Coi40F9K.svg","/_astro/edge.B7O1xshw.svg","/_astro/safari.CdqjFDzc.svg","/_astro/firefox.CMmddY9p.svg","/_astro/chrome.f1eQSm4k.svg","/_astro/Layout.BHj0ZoFR.css","/_astro/favicon.CGiRCjPI.ico","/_astro/inter-cyrillic-ext-wght-normal.BOeWTOD4.woff2","/_astro/inter-cyrillic-wght-normal.DqGufNeO.woff2","/_astro/inter-greek-ext-wght-normal.DlzME5K_.woff2","/_astro/inter-greek-wght-normal.CkhJZR-_.woff2","/_astro/inter-vietnamese-wght-normal.CBcvBZtf.woff2","/_astro/inter-latin-ext-wght-normal.DO1Apj_S.woff2","/_astro/inter-latin-wght-normal.Dx4kXJAl.woff2","/_astro/markdown-elements-demo-post.DYzBYwDh.css","/404.html","/about/index.html","/contact/index.html","/contact1/index.html","/garden/index.html","/homes/personal/index.html","/homes/startup/index.html","/landing/click-through/index.html","/landing/lead-generation/index.html","/landing/pre-launch/index.html","/landing/product/index.html","/landing/sales/index.html","/landing/subscription/index.html","/pricing/index.html","/privacy/index.html","/rss.xml","/services/index.html","/terms/index.html","/index.html"],"buildFormat":"directory","checkOrigin":true,"actionBodySizeLimit":1048576,"serverIslandBodySizeLimit":1048576,"allowedDomains":[],"key":"GBIxOdUPUyXtyfbWtRyJ0ne5IKMtfDP01FC8LvUFptI=","sessionConfig":{"driver":"unstorage/drivers/netlify-blobs","options":{"name":"astro-sessions","consistency":"strong"}},"image":{},"devToolbar":{"enabled":false,"debugInfoOutput":""},"logLevel":"info","shouldInjectCspMetaTags":false}));
+					const manifestRoutes = _manifest.routes;
+					
+					const manifest = Object.assign(_manifest, {
+					  renderers,
+					  actions: () => import('./noop-entrypoint_BOlrdqWF.mjs'),
+					  middleware: () => import('./_noop-middleware_CxX_NzRo.mjs'),
+					  sessionDriver: () => import('./_virtual_astro_session-driver_DjXIZi9n.mjs'),
+					  
+					  serverIslandMappings: () => import('./_virtual_astro_server-island-manifest_CQQ1F5PF.mjs'),
+					  routes: manifestRoutes,
+					  pageMap,
+					});
+
+const VIRTUAL_PAGE_MODULE_ID = "virtual:astro:page:";
+const VIRTUAL_PAGE_RESOLVED_MODULE_ID = "\0" + VIRTUAL_PAGE_MODULE_ID;
+
+const ASTRO_PAGE_EXTENSION_POST_PATTERN = "@_@";
+function getVirtualModulePageName(virtualModulePrefix, path) {
+  const extension = fileExtension(path);
+  return virtualModulePrefix + (extension.startsWith(".") ? path.slice(0, -extension.length) + extension.replace(".", ASTRO_PAGE_EXTENSION_POST_PATTERN) : path);
+}
+
+const SCRIPT_ID_PREFIX = `astro:scripts/`;
+const BEFORE_HYDRATION_SCRIPT_ID = `${SCRIPT_ID_PREFIX}${"before-hydration"}.js`;
+const PAGE_SCRIPT_ID = `${SCRIPT_ID_PREFIX}${"page"}.js`;
+
+const ASTRO_PAGE_KEY_SEPARATOR = "&";
+function makePageDataKey(route, componentPath) {
+  return route + ASTRO_PAGE_KEY_SEPARATOR + componentPath;
+}
+
+function getPageData(internals, route, component) {
+  let pageData = internals.pagesByKeys.get(makePageDataKey(route, component));
+  if (pageData) {
+    return pageData;
+  }
+  return void 0;
+}
+function cssOrder(a, b) {
+  let depthA = a.depth, depthB = b.depth, orderA = a.order, orderB = b.order;
+  if (orderA === -1 && orderB >= 0) {
+    return 1;
+  } else if (orderB === -1 && orderA >= 0) {
+    return -1;
+  } else if (orderA > orderB) {
+    return 1;
+  } else if (orderA < orderB) {
+    return -1;
+  } else {
+    if (depthA === -1) {
+      return -1;
+    } else if (depthB === -1) {
+      return 1;
+    } else {
+      return depthA > depthB ? -1 : 1;
+    }
+  }
+}
+function mergeInlineCss(acc, current) {
+  const lastAdded = acc.at(acc.length - 1);
+  const lastWasInline = lastAdded?.type === "inline";
+  const currentIsInline = current?.type === "inline";
+  if (lastWasInline && currentIsInline) {
+    const merged = { type: "inline", content: lastAdded.content + current.content };
+    acc[acc.length - 1] = merged;
+    return acc;
+  }
+  acc.push(current);
+  return acc;
+}
+
+class BuildPipeline extends Pipeline {
+  internals;
+  options;
+  manifest;
+  defaultRoutes;
   getName() {
-    return "AppPipeline";
+    return "BuildPipeline";
   }
-  static create({ manifest, streaming }) {
-    const resolve = async function resolve2(specifier) {
-      if (!(specifier in manifest.entryModules)) {
-        throw new Error(`Unable to resolve [${specifier}]`);
-      }
-      const bundlePath = manifest.entryModules[specifier];
-      if (bundlePath.startsWith("data:") || bundlePath.length === 0) {
-        return bundlePath;
-      } else {
-        return createAssetLink(bundlePath, manifest.base, manifest.assetsPrefix);
-      }
-    };
-    const logger = createConsoleLogger(manifest.logLevel);
-    const pipeline = new AppPipeline(
-      logger,
-      manifest,
-      "production",
-      manifest.renderers,
-      resolve,
-      streaming,
-      void 0,
-      void 0,
-      void 0,
-      void 0,
-      void 0,
-      void 0,
-      void 0,
-      void 0
-    );
-    return pipeline;
+  /**
+   * This cache is needed to map a single `RouteData` to its file path.
+   * @private
+   */
+  #routesByFilePath = /* @__PURE__ */ new WeakMap();
+  getSettings() {
+    if (!this.options) {
+      throw new Error("No options defined");
+    }
+    return this.options.settings;
   }
-  async headElements(routeData) {
-    const { assetsPrefix, base } = this.manifest;
-    const routeInfo = this.manifest.routes.find(
-      (route) => route.routeData.route === routeData.route
-    );
-    const links = /* @__PURE__ */ new Set();
-    const scripts = /* @__PURE__ */ new Set();
-    const styles = createStylesheetElementSet(routeInfo?.styles ?? [], base, assetsPrefix);
-    for (const script of routeInfo?.scripts ?? []) {
-      if ("stage" in script) {
-        if (script.stage === "head-inline") {
-          scripts.add({
-            props: {},
-            children: script.children
-          });
+  getOptions() {
+    if (!this.options) {
+      throw new Error("No options defined");
+    }
+    return this.options;
+  }
+  getInternals() {
+    if (!this.internals) {
+      throw new Error("No internals defined");
+    }
+    return this.internals;
+  }
+  constructor(manifest, defaultRoutes = createDefaultRoutes(manifest)) {
+    const resolveCache = /* @__PURE__ */ new Map();
+    async function resolve(specifier) {
+      if (resolveCache.has(specifier)) {
+        return resolveCache.get(specifier);
+      }
+      const hashedFilePath = manifest.entryModules[specifier];
+      if (typeof hashedFilePath !== "string" || hashedFilePath === "") {
+        if (specifier === BEFORE_HYDRATION_SCRIPT_ID) {
+          resolveCache.set(specifier, "");
+          return "";
         }
-      } else {
-        scripts.add(createModuleScriptElement(script, base, assetsPrefix));
+        throw new Error(`Cannot find the built path for ${specifier}`);
+      }
+      const assetLink = createAssetLink(hashedFilePath, manifest.base, manifest.assetsPrefix);
+      resolveCache.set(specifier, assetLink);
+      return assetLink;
+    }
+    const logger = createConsoleLogger(manifest.logLevel);
+    super(logger, manifest, "production", manifest.renderers, resolve, manifest.serverLike);
+    this.manifest = manifest;
+    this.defaultRoutes = defaultRoutes;
+    if (queueRenderingEnabled(this.manifest.experimentalQueuedRendering)) {
+      this.nodePool = newNodePool(this.manifest.experimentalQueuedRendering);
+      if (this.manifest.experimentalQueuedRendering.contentCache) {
+        this.htmlStringCache = new HTMLStringCache(1e3);
       }
     }
-    return { links, styles, scripts };
+  }
+  getRoutes() {
+    return this.getOptions().routesList.routes;
+  }
+  static create({ manifest }) {
+    return new BuildPipeline(manifest);
+  }
+  setInternals(internals) {
+    this.internals = internals;
+  }
+  setOptions(options) {
+    this.options = options;
+  }
+  headElements(routeData) {
+    const {
+      manifest: { assetsPrefix, base }
+    } = this;
+    const settings = this.getSettings();
+    const internals = this.getInternals();
+    const links = /* @__PURE__ */ new Set();
+    const pageBuildData = getPageData(internals, routeData.route, routeData.component);
+    const scripts = /* @__PURE__ */ new Set();
+    const sortedCssAssets = pageBuildData?.styles.sort(cssOrder).map(({ sheet }) => sheet).reduce(mergeInlineCss, []);
+    const styles = createStylesheetElementSet(sortedCssAssets ?? [], base, assetsPrefix);
+    if (settings.scripts.some((script) => script.stage === "page")) {
+      const hashedFilePath = internals.entrySpecifierToBundleMap.get(PAGE_SCRIPT_ID);
+      if (typeof hashedFilePath !== "string") {
+        throw new Error(`Cannot find the built path for ${PAGE_SCRIPT_ID}`);
+      }
+      const src = createAssetLink(hashedFilePath, base, assetsPrefix);
+      scripts.add({
+        props: { type: "module", src },
+        children: ""
+      });
+    }
+    for (const script of settings.scripts) {
+      if (script.stage === "head-inline") {
+        scripts.add({
+          props: {},
+          children: script.content
+        });
+      }
+    }
+    return { scripts, styles, links };
   }
   componentMetadata() {
+  }
+  /**
+   * It collects the routes to generate during the build.
+   * It returns a map of page information and their relative entry point as a string.
+   */
+  retrieveRoutesToGenerate() {
+    const pages = /* @__PURE__ */ new Set();
+    const defaultRouteComponents = new Set(this.defaultRoutes.map((route) => route.component));
+    for (const { routeData } of this.manifest.routes) {
+      if (routeIsRedirect(routeData)) {
+        pages.add(routeData);
+        continue;
+      }
+      if (routeIsFallback(routeData) && i18nHasFallback(this.manifest)) {
+        pages.add(routeData);
+        continue;
+      }
+      if (defaultRouteComponents.has(routeData.component)) {
+        continue;
+      }
+      pages.add(routeData);
+      const moduleSpecifier = getVirtualModulePageName(
+        VIRTUAL_PAGE_RESOLVED_MODULE_ID,
+        routeData.component
+      );
+      const filePath = this.internals?.entrySpecifierToBundleMap.get(moduleSpecifier);
+      if (filePath) {
+        this.#routesByFilePath.set(routeData, filePath);
+      }
+    }
+    return pages;
   }
   async getComponentByRoute(routeData) {
     const module = await this.getModuleForRoute(routeData);
@@ -8486,97 +8892,75 @@ class AppPipeline extends Pipeline {
     );
   }
   async tryRewrite(payload, request) {
-    const { newUrl, pathname, routeData } = findRouteToRewrite({
+    const { routeData, pathname, newUrl } = findRouteToRewrite({
       payload,
       request,
-      routes: this.manifest?.routes.map((r) => r.routeData),
+      routes: this.manifest.routes.map((routeInfo) => routeInfo.routeData),
       trailingSlash: this.manifest.trailingSlash,
       buildFormat: this.manifest.buildFormat,
       base: this.manifest.base,
-      outDir: this.manifest?.serverLike ? this.manifest.buildClientDir : this.manifest.outDir
+      outDir: this.manifest.serverLike ? this.manifest.buildClientDir : this.manifest.outDir
     });
     const componentInstance = await this.getComponentByRoute(routeData);
-    return { newUrl, pathname, componentInstance, routeData };
+    return { routeData, componentInstance, newUrl, pathname };
   }
 }
+function i18nHasFallback(manifest) {
+  if (manifest.i18n && manifest.i18n.fallback) {
+    return Object.keys(manifest.i18n.fallback).length > 0;
+  }
+  return false;
+}
 
-class App extends BaseApp {
-  createPipeline(streaming) {
-    return AppPipeline.create({
-      manifest: this.manifest,
-      streaming
+class BuildApp extends BaseApp {
+  createPipeline(_streaming, manifest, ..._args) {
+    return BuildPipeline.create({
+      manifest
+    });
+  }
+  async createRenderContext(payload) {
+    return await super.createRenderContext({
+      ...payload
     });
   }
   isDev() {
-    return false;
+    return true;
   }
-  // Should we log something for our users?
+  setInternals(internals) {
+    this.pipeline.setInternals(internals);
+  }
+  setOptions(options) {
+    this.pipeline.setOptions(options);
+    this.logger = options.logger;
+  }
+  getOptions() {
+    return this.pipeline.getOptions();
+  }
+  getSettings() {
+    return this.pipeline.getSettings();
+  }
+  async renderError(request, options) {
+    if (options.status === 500) {
+      if (options.response) {
+        return options.response;
+      }
+      throw options.error;
+    } else {
+      return super.renderError(request, {
+        ...options,
+        prerenderedErrorPageFetch: void 0
+      });
+    }
+  }
+  getQueueStats() {
+    if (this.pipeline.nodePool) {
+      return this.pipeline.nodePool.getStats();
+    }
+  }
   logRequest(_options) {
   }
 }
 
-const renderers = [];
+const app = new BuildApp(manifest);
 
-const serializedData = [{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"type":"page","component":"_server-islands.astro","params":["name"],"segments":[[{"content":"_server-islands","dynamic":false,"spread":false}],[{"content":"name","dynamic":true,"spread":false}]],"pattern":"^\\/_server-islands\\/([^/]+?)$","prerender":false,"isIndex":false,"fallbackRoutes":[],"route":"/_server-islands/[name]","origin":"internal","distURL":[],"_meta":{"trailingSlash":"never"}}}];
-				serializedData.map(deserializeRouteInfo);
-
-const pageMap = new Map([
-    
-]);
-
-const _manifest = deserializeManifest(({"rootDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/","cacheDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.astro/","outDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/dist/","srcDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/src/","publicDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/public/","buildClientDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/dist/","buildServerDir":"file:///Users/josefscarantino/Documents/_Josef.co/astrowind/.netlify/build/","adapterName":"@astrojs/netlify","assetsDir":"_astro","routes":[{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"type":"page","component":"_server-islands.astro","params":["name"],"segments":[[{"content":"_server-islands","dynamic":false,"spread":false}],[{"content":"name","dynamic":true,"spread":false}]],"pattern":"^\\/_server-islands\\/([^/]+?)$","prerender":false,"isIndex":false,"fallbackRoutes":[],"route":"/_server-islands/[name]","origin":"internal","distURL":[],"_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/404","isIndex":false,"type":"page","pattern":"^\\/404$","segments":[[{"content":"404","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/404.astro","pathname":"/404","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/about","isIndex":false,"type":"page","pattern":"^\\/about$","segments":[[{"content":"about","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/about.astro","pathname":"/about","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/contact","isIndex":false,"type":"page","pattern":"^\\/contact$","segments":[[{"content":"contact","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/contact.astro","pathname":"/contact","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/contact1","isIndex":false,"type":"page","pattern":"^\\/contact1$","segments":[[{"content":"contact1","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/contact1.astro","pathname":"/contact1","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]/[category]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?\\/([^/]+?)(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"category","dynamic":true,"spread":false}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","category","...page"],"component":"src/pages/garden/[...blog]/[category]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]/[tag]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?\\/([^/]+?)(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"tag","dynamic":true,"spread":false}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","tag","...page"],"component":"src/pages/garden/[...blog]/[tag]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]/[...page]","isIndex":false,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}],[{"content":"...page","dynamic":true,"spread":true}]],"params":["...blog","...page"],"component":"src/pages/garden/[...blog]/[...page].astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden","isIndex":true,"type":"page","pattern":"^\\/garden$","segments":[[{"content":"garden","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/garden/index.astro","pathname":"/garden","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/garden/[...blog]","isIndex":true,"type":"page","pattern":"^\\/garden(?:\\/(.*?))?$","segments":[[{"content":"garden","dynamic":false,"spread":false}],[{"content":"...blog","dynamic":true,"spread":true}]],"params":["...blog"],"component":"src/pages/garden/[...blog]/index.astro","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/homes/personal","isIndex":false,"type":"page","pattern":"^\\/homes\\/personal$","segments":[[{"content":"homes","dynamic":false,"spread":false}],[{"content":"personal","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/homes/personal.astro","pathname":"/homes/personal","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/homes/startup","isIndex":false,"type":"page","pattern":"^\\/homes\\/startup$","segments":[[{"content":"homes","dynamic":false,"spread":false}],[{"content":"startup","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/homes/startup.astro","pathname":"/homes/startup","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/click-through","isIndex":false,"type":"page","pattern":"^\\/landing\\/click-through$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"click-through","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/click-through.astro","pathname":"/landing/click-through","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/lead-generation","isIndex":false,"type":"page","pattern":"^\\/landing\\/lead-generation$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"lead-generation","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/lead-generation.astro","pathname":"/landing/lead-generation","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/pre-launch","isIndex":false,"type":"page","pattern":"^\\/landing\\/pre-launch$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"pre-launch","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/pre-launch.astro","pathname":"/landing/pre-launch","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/product","isIndex":false,"type":"page","pattern":"^\\/landing\\/product$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"product","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/product.astro","pathname":"/landing/product","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/sales","isIndex":false,"type":"page","pattern":"^\\/landing\\/sales$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"sales","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/sales.astro","pathname":"/landing/sales","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/landing/subscription","isIndex":false,"type":"page","pattern":"^\\/landing\\/subscription$","segments":[[{"content":"landing","dynamic":false,"spread":false}],[{"content":"subscription","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/landing/subscription.astro","pathname":"/landing/subscription","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/pricing","isIndex":false,"type":"page","pattern":"^\\/pricing$","segments":[[{"content":"pricing","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/pricing.astro","pathname":"/pricing","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/privacy","isIndex":false,"type":"page","pattern":"^\\/privacy$","segments":[[{"content":"privacy","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/privacy.md","pathname":"/privacy","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[],"routeData":{"route":"/rss.xml","isIndex":false,"type":"endpoint","pattern":"^\\/rss\\.xml$","segments":[[{"content":"rss.xml","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/rss.xml.ts","pathname":"/rss.xml","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/services","isIndex":false,"type":"page","pattern":"^\\/services$","segments":[[{"content":"services","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/services.astro","pathname":"/services","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/terms","isIndex":false,"type":"page","pattern":"^\\/terms$","segments":[[{"content":"terms","dynamic":false,"spread":false}]],"params":[],"component":"src/pages/terms.md","pathname":"/terms","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}},{"file":"","links":[],"scripts":[],"styles":[{"type":"external","src":"_astro/Layout.BHj0ZoFR.css"}],"routeData":{"route":"/","isIndex":true,"type":"page","pattern":"^\\/$","segments":[],"params":[],"component":"src/pages/index.astro","pathname":"/","prerender":true,"fallbackRoutes":[],"distURL":[],"origin":"project","_meta":{"trailingSlash":"never"}}}],"serverLike":true,"middlewareMode":"classic","site":"https://astrowind.vercel.app","base":"/","trailingSlash":"never","compressHTML":true,"experimentalQueuedRendering":{"enabled":false,"poolSize":0,"contentCache":false},"componentMetadata":[["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/click-through.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/lead-generation.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/pre-launch.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/product.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/sales.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/landing/subscription.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/privacy.md",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/terms.md",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/about.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/contact.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/contact1.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/[...page].astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/[category]/[...page].astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/[tag]/[...page].astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/[...blog]/index.astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/garden/index.astro",{"propagation":"in-tree","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/homes/personal.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/homes/startup.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/index.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/pricing.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/services.astro",{"propagation":"none","containsHead":true}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/404.astro",{"propagation":"none","containsHead":true}],["\u0000astro:content",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/utils/blog.ts",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/components/blog/RelatedPosts.astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/index@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:pages",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:manifest",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/astro@6.1.4_@netlify+blobs@10.7.4_@types+node@25.5.2_jiti@1.21.7_lightningcss@1.29.3_ro_78b6a56cad01fab3f93aae454299175f/node_modules/astro/dist/entrypoints/prerender.js",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/components/widgets/BlogHighlightedPosts.astro",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/components/widgets/BlogLatestPosts.astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/index@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/[...page]@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/[category]/[...page]@_@astro",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/garden/[...blog]/[tag]/[...page]@_@astro",{"propagation":"in-tree","containsHead":false}],["/Users/josefscarantino/Documents/_Josef.co/astrowind/src/pages/rss.xml.ts",{"propagation":"in-tree","containsHead":false}],["\u0000virtual:astro:page:src/pages/rss.xml@_@ts",{"propagation":"in-tree","containsHead":false}]],"renderers":[],"clientDirectives":[["idle","(()=>{var l=(n,t)=>{let i=async()=>{await(await n())()},e=typeof t.value==\"object\"?t.value:void 0,s={timeout:e==null?void 0:e.timeout};\"requestIdleCallback\"in window?window.requestIdleCallback(i,s):setTimeout(i,s.timeout||200)};(self.Astro||(self.Astro={})).idle=l;window.dispatchEvent(new Event(\"astro:idle\"));})();"],["load","(()=>{var e=async t=>{await(await t())()};(self.Astro||(self.Astro={})).load=e;window.dispatchEvent(new Event(\"astro:load\"));})();"],["media","(()=>{var n=(a,t)=>{let i=async()=>{await(await a())()};if(t.value){let e=matchMedia(t.value);e.matches?i():e.addEventListener(\"change\",i,{once:!0})}};(self.Astro||(self.Astro={})).media=n;window.dispatchEvent(new Event(\"astro:media\"));})();"],["only","(()=>{var e=async t=>{await(await t())()};(self.Astro||(self.Astro={})).only=e;window.dispatchEvent(new Event(\"astro:only\"));})();"],["visible","(()=>{var a=(s,i,o)=>{let r=async()=>{await(await s())()},t=typeof i.value==\"object\"?i.value:void 0,c={rootMargin:t==null?void 0:t.rootMargin},n=new IntersectionObserver(e=>{for(let l of e)if(l.isIntersecting){n.disconnect(),r();break}},c);for(let e of o.children)n.observe(e)};(self.Astro||(self.Astro={})).visible=a;window.dispatchEvent(new Event(\"astro:visible\"));})();"]],"entryModules":{"\u0000virtual:astro:actions/noop-entrypoint":"chunks/noop-entrypoint_BOlrdqWF.mjs","\u0000noop-middleware":"virtual_astro_middleware.mjs","\u0000virtual:astro:session-driver":"chunks/_virtual_astro_session-driver_DjXIZi9n.mjs","\u0000virtual:astro:server-island-manifest":"chunks/_virtual_astro_server-island-manifest_CQQ1F5PF.mjs","\u0000virtual:astro:page:src/pages/404@_@astro":"chunks/404_Ch-_NdGS.mjs","\u0000virtual:astro:page:src/pages/about@_@astro":"chunks/about_Bai5gVVG.mjs","\u0000virtual:astro:page:src/pages/contact@_@astro":"chunks/contact_CjFldVPz.mjs","\u0000virtual:astro:page:src/pages/contact1@_@astro":"chunks/contact1_CQLYVJSl.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/[category]/[...page]@_@astro":"chunks/_.._5BCrdz76.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/[tag]/[...page]@_@astro":"chunks/_.._hU3bdFzc.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/[...page]@_@astro":"chunks/_.._CoWf3rC0.mjs","\u0000virtual:astro:page:src/pages/garden/index@_@astro":"chunks/index_DpNZaOY7.mjs","\u0000virtual:astro:page:src/pages/garden/[...blog]/index@_@astro":"chunks/index_B3wBPYZr.mjs","\u0000virtual:astro:page:src/pages/homes/personal@_@astro":"chunks/personal_DfvTZUFC.mjs","\u0000virtual:astro:page:src/pages/homes/startup@_@astro":"chunks/startup_CXoxVqtJ.mjs","\u0000virtual:astro:page:src/pages/landing/click-through@_@astro":"chunks/click-through__hixIMPX.mjs","\u0000virtual:astro:page:src/pages/landing/lead-generation@_@astro":"chunks/lead-generation_DeGH0sCm.mjs","\u0000virtual:astro:page:src/pages/landing/pre-launch@_@astro":"chunks/pre-launch_CUZHHbBV.mjs","\u0000virtual:astro:page:src/pages/landing/product@_@astro":"chunks/product_t9np7duJ.mjs","\u0000virtual:astro:page:src/pages/landing/sales@_@astro":"chunks/sales_GET-N_N2.mjs","\u0000virtual:astro:page:src/pages/landing/subscription@_@astro":"chunks/subscription_BMy7bIHu.mjs","\u0000virtual:astro:page:src/pages/pricing@_@astro":"chunks/pricing_BceTDZyB.mjs","\u0000virtual:astro:page:src/pages/privacy@_@md":"chunks/privacy_pF7YT8Qd.mjs","\u0000virtual:astro:page:src/pages/rss.xml@_@ts":"chunks/rss_BIjwFcQz.mjs","\u0000virtual:astro:page:src/pages/services@_@astro":"chunks/services_BHQuQMEo.mjs","\u0000virtual:astro:page:src/pages/terms@_@md":"chunks/terms_B-rlN09d.mjs","\u0000virtual:astro:page:src/pages/index@_@astro":"chunks/index_Bi5xS5pH.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/app-store.png":"chunks/app-store_MrASZIIe.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/default.png":"chunks/default_CYIan_vk.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/google-play.png":"chunks/google-play_CbQVenxx.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/hero-image.png":"chunks/hero-image_TOV4tSA1.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/logo.png":"chunks/logo_iBzpVNGv.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/assets/images/logo.svg":"chunks/logo_8jFvSOTr.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astrojs+netlify@7.0.6_@types+node@25.5.2_astro@6.1.4_@netlify+blobs@10.7.4_@types+node_0216d6ab6b8cc1a7ee80621168b6966c/node_modules/@astrojs/netlify/dist/image-service.js":"chunks/image-service_Xy4rxfj9.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/.astro/content-assets.mjs":"chunks/content-assets_DleWbedO.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/.astro/content-modules.mjs":"chunks/content-modules_BLc5ZMfo.mjs","\u0000astro:data-layer-content":"chunks/_astro_data-layer-content_nMowf7_8.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/astrowind-template-in-depth.mdx?astroPropagatedAssets":"chunks/astrowind-template-in-depth_CWYe6bV0.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/markdown-elements-demo-post.mdx?astroPropagatedAssets":"chunks/markdown-elements-demo-post_D4fe1Udt.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/astrowind-template-in-depth.mdx":"chunks/astrowind-template-in-depth_BODmPvvb.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/src/data/post/markdown-elements-demo-post.mdx":"chunks/markdown-elements-demo-post_BabB2Dlm.mjs","astro/entrypoints/prerender":"prerender-entry.C1QmNaBc.mjs","@astrojs/netlify/ssr-function.js":"entry.mjs","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/astro@6.1.4_@netlify+blobs@10.7.4_@types+node@25.5.2_jiti@1.21.7_lightningcss@1.29.3_ro_78b6a56cad01fab3f93aae454299175f/node_modules/astro/components/ClientRouter.astro?astro&type=script&index=0&lang.ts":"_astro/ClientRouter.astro_astro_type_script_index_0_lang.j56hQv-j.js","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-vimeo@0.3.12/node_modules/@astro-community/astro-embed-vimeo/Vimeo.astro?astro&type=script&index=0&lang.ts":"_astro/Vimeo.astro_astro_type_script_index_0_lang.CgRsrQuG.js","/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-youtube@0.5.10/node_modules/@astro-community/astro-embed-youtube/YouTube.astro?astro&type=script&index=0&lang.ts":"_astro/YouTube.astro_astro_type_script_index_0_lang.DRTAn-6M.js","astro:scripts/before-hydration.js":""},"inlinedScripts":[["/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-vimeo@0.3.12/node_modules/@astro-community/astro-embed-vimeo/Vimeo.astro?astro&type=script&index=0&lang.ts","class t extends HTMLElement{constructor(){super(...arguments),this.videoId=encodeURIComponent(this.dataset.id)}static{this.preconnected=!1}connectedCallback(){this.addEventListener(\"pointerover\",t.warmConnections,{once:!0}),this.addEventListener(\"click\",e=>this.addIframe(e));const c=this.querySelector(\"a\");if(c){const e=document.createElement(\"button\");e.classList.add(...c.classList.values()),e.setAttribute(\"aria-label\",c.getAttribute(\"aria-label\")),c.replaceWith(e)}}static addPrefetch(c,e){const a=document.createElement(\"link\");a.rel=c,a.href=e,document.head.append(a)}static warmConnections(){t.preconnected||(t.addPrefetch(\"preconnect\",\"https://player.vimeo.com\"),t.addPrefetch(\"preconnect\",\"https://i.vimeocdn.com\"),t.addPrefetch(\"preconnect\",\"https://f.vimeocdn.com\"),t.addPrefetch(\"preconnect\",\"https://fresnel.vimeocdn.com\"),t.preconnected=!0)}addIframe(c){if(this.classList.contains(\"ltv-activated\"))return;c.preventDefault(),this.classList.add(\"ltv-activated\");const e=encodeURIComponent(this.dataset.t||\"0m\"),a=new URLSearchParams(this.dataset.params||[]),n=document.createElement(\"iframe\");n.width=\"640\",n.height=\"360\",n.allow=\"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\",n.allowFullscreen=!0,n.src=`https://player.vimeo.com/video/${this.videoId}?${a.toString()}#t=${e}`,this.append(n)}}customElements.get(\"lite-vimeo\")||customElements.define(\"lite-vimeo\",t);"],["/Users/josefscarantino/Documents/_Josef.co/astrowind/node_modules/.pnpm/@astro-community+astro-embed-youtube@0.5.10/node_modules/@astro-community/astro-embed-youtube/YouTube.astro?astro&type=script&index=0&lang.ts","class i extends HTMLElement{connectedCallback(){this.videoId=this.getAttribute(\"videoid\");let e=this.querySelector(\".lyt-playbtn,.lty-playbtn\");if(this.playLabel=e&&e.textContent.trim()||this.getAttribute(\"playlabel\")||\"Play\",this.dataset.title=this.getAttribute(\"title\")||\"\",this.style.backgroundImage||(this.style.backgroundImage=`url(\"https://i.ytimg.com/vi/${this.videoId}/hqdefault.jpg\")`,this.upgradePosterImage()),e||(e=document.createElement(\"button\"),e.type=\"button\",e.classList.add(\"lyt-playbtn\",\"lty-playbtn\"),this.append(e)),!e.textContent){const t=document.createElement(\"span\");t.className=\"lyt-visually-hidden\",t.textContent=this.playLabel,e.append(t)}this.addNoscriptIframe(),e.nodeName===\"A\"&&(e.removeAttribute(\"href\"),e.setAttribute(\"tabindex\",\"0\"),e.setAttribute(\"role\",\"button\"),e.addEventListener(\"keydown\",t=>{(t.key===\"Enter\"||t.key===\" \")&&(t.preventDefault(),this.activate())})),this.addEventListener(\"pointerover\",i.warmConnections,{once:!0}),this.addEventListener(\"focusin\",i.warmConnections,{once:!0}),this.addEventListener(\"click\",this.activate),this.needsYTApi=this.hasAttribute(\"js-api\")||navigator.vendor.includes(\"Apple\")||navigator.userAgent.includes(\"Mobi\")}static addPrefetch(e,t,a){const r=document.createElement(\"link\");r.rel=e,r.href=t,a&&(r.as=a),document.head.append(r)}static warmConnections(){i.preconnected||(i.addPrefetch(\"preconnect\",\"https://www.youtube-nocookie.com\"),i.addPrefetch(\"preconnect\",\"https://www.google.com\"),i.addPrefetch(\"preconnect\",\"https://googleads.g.doubleclick.net\"),i.addPrefetch(\"preconnect\",\"https://static.doubleclick.net\"),i.preconnected=!0)}fetchYTPlayerApi(){window.YT||window.YT&&window.YT.Player||(this.ytApiPromise=new Promise((e,t)=>{var a=document.createElement(\"script\");a.src=\"https://www.youtube.com/iframe_api\",a.async=!0,a.onload=r=>{YT.ready(e)},a.onerror=t,this.append(a)}))}async getYTPlayer(){return this.playerPromise||await this.activate(),this.playerPromise}async addYTPlayerIframe(){this.fetchYTPlayerApi(),await this.ytApiPromise;const e=document.createElement(\"div\");this.append(e);const t=Object.fromEntries(this.getParams().entries());this.playerPromise=new Promise(a=>{let r=new YT.Player(e,{width:\"100%\",videoId:this.videoId,playerVars:t,events:{onReady:n=>{n.target.playVideo(),a(r)}}})})}addNoscriptIframe(){const e=this.createBasicIframe(),t=document.createElement(\"noscript\");t.innerHTML=e.outerHTML,this.append(t)}getParams(){const e=new URLSearchParams(this.getAttribute(\"params\")||[]);return e.append(\"autoplay\",\"1\"),e.append(\"playsinline\",\"1\"),e}async activate(){if(this.classList.contains(\"lyt-activated\"))return;if(this.classList.add(\"lyt-activated\"),this.needsYTApi)return this.addYTPlayerIframe(this.getParams());const e=this.createBasicIframe();this.append(e),e.focus()}createBasicIframe(){const e=document.createElement(\"iframe\");return e.width=560,e.height=315,e.title=this.playLabel,e.allow=\"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\",e.allowFullscreen=!0,e.referrerPolicy=\"strict-origin-when-cross-origin\",e.src=`https://www.youtube-nocookie.com/embed/${encodeURIComponent(this.videoId)}?${this.getParams().toString()}`,e}upgradePosterImage(){setTimeout(()=>{const e=`https://i.ytimg.com/vi_webp/${this.videoId}/sddefault.webp`,t=new Image;t.fetchPriority=\"low\",t.referrerpolicy=\"origin\",t.src=e,t.onload=a=>{a.target.naturalHeight==90&&a.target.naturalWidth==120||(this.style.backgroundImage=`url(\"${e}\")`)}},100)}}customElements.define(\"lite-youtube\",i);"]],"assets":["/_headers","/robots.txt","/_astro/ClientRouter.astro_astro_type_script_index_0_lang.j56hQv-j.js","/decapcms/config.yml","/decapcms/index.html","/_astro/apple-touch-icon.DHIlG7dp.png","/_astro/favicon.vp_fBu0c.svg","/_astro/app-store.t3tG4Jz3.png","/_astro/default.CZ816Hke.png","/_astro/google-play.ISTMcpLO.png","/_astro/logo.a9g0Q0nj.png","/_astro/logo.Coi40F9K.svg","/_astro/hero-image.DwIC_L_T.png","/_astro/edge.B7O1xshw.svg","/_astro/chrome.f1eQSm4k.svg","/_astro/firefox.CMmddY9p.svg","/_astro/safari.CdqjFDzc.svg","/_astro/Layout.BHj0ZoFR.css","/_astro/favicon.CGiRCjPI.ico","/_astro/inter-cyrillic-ext-wght-normal.BOeWTOD4.woff2","/_astro/inter-cyrillic-wght-normal.DqGufNeO.woff2","/_astro/inter-greek-ext-wght-normal.DlzME5K_.woff2","/_astro/inter-greek-wght-normal.CkhJZR-_.woff2","/_astro/inter-vietnamese-wght-normal.CBcvBZtf.woff2","/_astro/inter-latin-ext-wght-normal.DO1Apj_S.woff2","/_astro/inter-latin-wght-normal.Dx4kXJAl.woff2","/_astro/markdown-elements-demo-post.DYzBYwDh.css","/404.html","/about/index.html","/contact/index.html","/contact1/index.html","/garden/index.html","/homes/personal/index.html","/homes/startup/index.html","/landing/click-through/index.html","/landing/lead-generation/index.html","/landing/pre-launch/index.html","/landing/product/index.html","/landing/sales/index.html","/landing/subscription/index.html","/pricing/index.html","/privacy/index.html","/rss.xml","/services/index.html","/terms/index.html","/index.html"],"buildFormat":"directory","checkOrigin":true,"actionBodySizeLimit":1048576,"serverIslandBodySizeLimit":1048576,"allowedDomains":[],"key":"hRAyRap0Hp4yGaob4h8g4kBuJ4kPjwu8ADMDliYv2lo=","sessionConfig":{"driver":"unstorage/drivers/netlify-blobs","options":{"name":"astro-sessions","consistency":"strong"}},"image":{},"devToolbar":{"enabled":false,"debugInfoOutput":""},"logLevel":"info","shouldInjectCspMetaTags":false}));
-					const manifestRoutes = _manifest.routes;
-					
-					const manifest = Object.assign(_manifest, {
-					  renderers,
-					  actions: () => import('./chunks/noop-entrypoint_BOlrdqWF.mjs'),
-					  middleware: () => import('./virtual_astro_middleware.mjs'),
-					  sessionDriver: () => import('./chunks/_virtual_astro_session-driver_DjXIZi9n.mjs'),
-					  
-					  serverIslandMappings: () => import('./chunks/_virtual_astro_server-island-manifest_CQQ1F5PF.mjs'),
-					  routes: manifestRoutes,
-					  pageMap,
-					});
-
-const createApp$1 = ({ streaming } = {}) => {
-  return new App(manifest, streaming);
-};
-
-const createApp = createApp$1;
-
-const app = createApp();
-function createHandler({ notFoundContent }) {
-  return async function handler(request, context) {
-    const routeData = app.match(request);
-    if (!routeData && typeof notFoundContent !== "undefined") {
-      return new Response(notFoundContent, {
-        status: 404,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
-      });
-    }
-    let locals = {};
-    const astroLocalsHeader = request.headers.get("x-astro-locals");
-    const middlewareSecretHeader = request.headers.get("x-astro-middleware-secret");
-    if (astroLocalsHeader) {
-      if (middlewareSecretHeader !== middlewareSecret) {
-        return new Response("Forbidden", { status: 403 });
-      }
-      request.headers.delete("x-astro-middleware-secret");
-      locals = JSON.parse(astroLocalsHeader);
-    }
-    locals.netlify = { context };
-    const response = await app.render(request, {
-      routeData,
-      locals,
-      clientAddress: context.ip
-    });
-    if (app.setCookieHeaders) {
-      for (const setCookieHeader of app.setCookieHeaders(response)) {
-        response.headers.append("Set-Cookie", setCookieHeader);
-      }
-    }
-    return response;
-  };
-}
-
-export { createHandler };
+export { AstroError as A, ExpectedImageOptions as E, Fragment as F, InvalidComponentArgs as I, NoImageMetadata as N, RenderUndefinedEntryError as R, UnknownContentCollectionError as U, __astro_tag_component__ as _, renderTemplate as a, addAttribute as b, renderSlot as c, renderElement$1 as d, createHeadAndContent as e, defineScriptVars as f, renderHead as g, generateCspDigest as h, createRenderInstruction as i, FailedToFetchRemoteImageDimensions as j, RemoteImageNotAllowed as k, ExpectedImage as l, maybeRenderHead as m, ExpectedNotESMImage as n, InvalidImageService as o, ImageMissingAlt as p, FontFamilyNotFound as q, renderComponent as r, spreadAttributes as s, AstroUserError as t, unescapeHTML as u, createVNode as v, app as w, manifest as x };
