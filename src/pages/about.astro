@@ -1,228 +1,172 @@
 ---
-import Features2 from '~/components/widgets/Features2.astro';
-import Features3 from '~/components/widgets/Features3.astro';
-import Hero from '~/components/widgets/Hero.astro';
-import Stats from '~/components/widgets/Stats.astro';
-import Steps2 from '~/components/widgets/Steps2.astro';
 import Layout from '~/layouts/PageLayout.astro';
 
+import Header from '~/components/widgets/Header.astro';
+import Hero from '~/components/widgets/Hero.astro';
+import Content from '~/components/widgets/Content.astro';
+import Steps from '~/components/widgets/Steps.astro';
+// import { getPermalink } from '~/utils/permalinks';
+import { headerData } from '~/navigation';
+
 const metadata = {
-  title: 'About us',
+  title: 'About Josef Scarantino',
 };
 ---
 
 <Layout metadata={metadata}>
-  <!-- Hero Widget ******************* -->
+  <Fragment slot="header">
+    <Header {...headerData} isSticky />
+  </Fragment>
 
-  <Hero
-    tagline="About us"
-    image={{
-      src: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80',
-      alt: 'Caos Image',
-    }}
-  >
-    <Fragment slot="title">
-      Elevate your online presence with our <br />
-      <span class="text-accent dark:text-white"> Beautiful Website Templates</span>
-    </Fragment>
+  <!-- Hero2 Widget ******************* -->
 
+  <Hero id="hero" title="Josef Scarantino" tagline="About">
     <Fragment slot="subtitle">
-      Donec efficitur, ipsum quis congue luctus, mauris magna convallis mauris, eu auctor nisi lectus non augue. Donec
-      quis lorem non massa vulputate efficitur ac at turpis. Sed tincidunt ex a nunc convallis, et lobortis nisi tempus.
-      Suspendisse vitae nisi eget tortor luctus maximus sed non lectus.
+      Systems thinker, community-builder, &amp; accidental founder.<br />Currently building the shared transformation
+      economy at <a href="https://forwardkind.com" class="text-accent font-semibold">Forwardkind</a>.
     </Fragment>
   </Hero>
 
-  <!-- Stats Widget ****************** -->
+  <!-- Content Widget **************** -->
 
-  <Stats
-    title="Statistics about us"
-    stats={[
-      { title: 'Offices', amount: '4' },
-      { title: 'Employees', amount: '248' },
-      { title: 'Templates', amount: '12' },
-      { title: 'Awards', amount: '24' },
-    ]}
-  />
-
-  <!-- Features3 Widget ************** -->
-
-  <Features3
-    title="Our templates"
-    subtitle="Etiam scelerisque, enim eget vestibulum luctus, nibh mauris blandit nulla, nec vestibulum risus justo ut enim. Praesent lacinia diam et ante imperdiet euismod."
-    columns={3}
-    isBeforeContent={true}
-    items={[
-      {
-        title: 'Educational',
-        description:
-          'Morbi faucibus luctus quam, sit amet aliquet felis tempor id. Cras augue massa, ornare quis dignissim a, molestie vel nulla.',
-        icon: 'tabler:template',
-      },
-      {
-        title: 'Interior Design',
-        description:
-          'Vivamus porttitor, tortor convallis aliquam pretium, turpis enim consectetur elit, vitae egestas purus erat ac nunc nulla.',
-        icon: 'tabler:template',
-      },
-      {
-        title: 'Photography',
-        description:
-          'Duis sed lectus in nisl vehicula porttitor eget quis odio. Aliquam erat volutpat. Nulla eleifend nulla id sem fermentum.',
-        icon: 'tabler:template',
-      },
-    ]}
-  />
-
-  <!-- Features3 Widget ************** -->
-
-  <Features3
-    columns={3}
-    isAfterContent={true}
-    items={[
-      {
-        title: 'E-commerce',
-        description:
-          'Rutrum non odio at vehicula. Proin ipsum justo, dignissim in vehicula sit amet, dignissim id quam. Sed ac tincidunt sapien.',
-        icon: 'tabler:template',
-      },
-      {
-        title: 'Blog',
-        description:
-          'Nullam efficitur volutpat sem sed fringilla. Suspendisse et enim eu orci volutpat laoreet ac vitae libero.',
-        icon: 'tabler:template',
-      },
-      {
-        title: 'Business',
-        description:
-          'Morbi et elit finibus, facilisis justo ut, pharetra ipsum. Donec efficitur, ipsum quis congue luctus, mauris magna.',
-        icon: 'tabler:template',
-      },
-      {
-        title: 'Branding',
-        description:
-          'Suspendisse vitae nisi eget tortor luctus maximus sed non lectus. Cras malesuada pretium placerat. Nullam venenatis dolor a ante rhoncus.',
-        icon: 'tabler:template',
-      },
-      {
-        title: 'Medical',
-        description:
-          'Vestibulum malesuada lacus id nibh posuere feugiat. Nam volutpat nulla a felis ultrices, id suscipit mauris congue. In hac habitasse platea dictumst.',
-        icon: 'tabler:template',
-      },
-      {
-        title: 'Fashion Design',
-        description:
-          'Maecenas eu tellus eget est scelerisque lacinia et a diam. Aliquam velit lorem, vehicula id fermentum et, rhoncus et purus.',
-        icon: 'tabler:template',
-      },
-    ]}
+  <Content
+    id="about"
+    columns={1}
+    items={[]}
     image={{
-      src: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1740&q=80',
-      alt: 'Colorful Image',
+      src: '',
+      alt: '',
+      loading: 'eager',
     }}
-  />
+  >
+    <Fragment slot="content">
+      <p>
+        As a social innovation strategist, my work helps to design impactful, collaborative experiences where people and
+        communities can fully participate and thrive. I'm also a serial entrepreneur and established founder coach with
+        nearly 25 years of experience building entrepreneurial communities, startup ecosystems, and next generation
+        impact leaders.
+      </p>
+      <br />
+      <p>
+        My work has reached thousands of students, entrepreneurs, and innovators across more than 50 countries and
+        touched a wide variety of sectors, including workforce development, higher education, nonprofit, government,
+        corporate innovation, and many others.
+      </p>
+      <br />
+      <p>
+        I'm currently building the transformation economy at <a href="https://forwardkind.com" target="_blank"
+          >Forwardkind</a
+        >, exploring how a shared-ownership cooperative model can contribute to cultivating collective human potential.
+      </p>
+    </Fragment>
 
-  <!-- Steps2 Widget ****************** -->
+    <Fragment slot="bg">
+      <div class="absolute inset-0 bg-blue-50 dark:bg-transparent"></div>
+    </Fragment>
+  </Content>
 
-  <Steps2
-    title="Our values"
-    subtitle="Maecenas eu tellus eget est scelerisque lacinia et a diam. Aliquam velit lorem, vehicula id fermentum et, rhoncus et purus. Nulla facilisi. Vestibulum malesuada lacus."
+  <!-- Steps Widget ****************** -->
+
+  <Steps
+    id="resume"
+    title="History"
     items={[
       {
-        title: 'Customer-centric approach',
-        description:
-          'Donec id nibh neque. Quisque et fermentum tortor. Fusce vitae dolor a mauris dignissim commodo. Ut eleifend luctus condimentum.',
+        title:
+          'Founder & President <br /> <span class="font-normal"><a href="https://forwardkind.com" target="_blank">Forwardkind Cooperative</a></span> <br /> <span class="text-sm font-normal">2025 - Present</span>',
+        description: `Forwardkind is building a shared-ownership, regenerative ecosystem that multiplies human potential — expanding access to transformational work and amplifying the collective impact of purpose-driven people.`,
+        icon: 'tabler:briefcase',
       },
       {
-        title: 'Constant Improvement',
-        description:
-          'Phasellus laoreet fermentum venenatis. Vivamus dapibus pulvinar arcu eget mattis. Fusce eget mauris leo.',
+        title:
+          'Founder <br /> <span class="font-normal"><a href="https://wckdlabs.com/" target="_blank">WCKD Labs</a></span> <br /> <span class="text-sm font-normal">2025 - Present</span>',
+        description: `Coming soon`,
+        icon: 'tabler:briefcase',
       },
       {
-        title: 'Ethical Practices',
-        description:
-          'Vestibulum imperdiet libero et lectus molestie, et maximus augue porta. Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.',
+        title:
+          'Founder <br /> <span class="font-normal"><a href="https://seedscalepartners.com/" target="_blank">Seed Scale Partners</a></span> <br /> <span class="text-sm font-normal">2024 - Present</span>',
+        description: `Seed Scale Partners delivers program design & management, ecosystem mapping, founder workshops, hackathons & pitch events, among other offerings. Most recent work is the <a href="https://rcedp.org/hca_lp" target="_blank">High Country Accelerator</a> in northwest Colorado.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Program Advisor <br /> <span class="font-normal"><a href="https://startupcolorado.org/" target="_blank">Startup Colorado</a></span> <br /> <span class="text-sm font-normal">2024</span>',
+        description: `Startup Colorado's mission is to demonstrate that rural entrepreneurship will ignite a culture of potential.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Head of Programs <br /> <span class="font-normal"><a href="https://allraise.org/" target="_blank">All Raise</a></span> <br /> <span class="text-sm font-normal">2022 - 2023</span>',
+        description: `All Raise is on a mission to accelerate the success of women and nonbinary investors, reshaping culture, capital flows, and decision-making power within venture capital.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Program Manager <br /> <span class="font-normal"><a href="https://www.hubspot.com/ventures" target="_blank">HubSpot Ventures</a></span> <br /> <span class="text-sm font-normal">2022</span>',
+        description: `HubSpot Ventures invests in early- and growth-stage software companies with the potential to deliver unique value to HubSpot's customer base.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Senior Program Manager <br /> <span class="font-normal"><a href="https://techstars.com" target="_blank">Techstars</a></span> <br /> <span class="text-sm font-normal">2019 - 2022</span>',
+        description: `Founded in 2006, Techstars is on a mission to invest in startups to enable more capital to flow to more entrepreneurs around the world in order to deliver exceptional returns to investors. Techstars does this by operating accelerator programs and venture capital funds, as well as by connecting startups, investors, corporations, and cities to help build thriving startup communities.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'CEO & Co-Founder <br /> <span class="font-normal">EightTen</span> <br /> <span class="text-sm font-normal">2016 - 2019</span>',
+        description: `EightTen was an edtech startup dedicated to increasing labor force participation of people with disabilities through soft skills training.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Director of Social Enterprise <br /> <span class="font-normal">Community Resource Center</span> <br /> <span class="text-sm font-normal">2017 - 2018</span>',
+        description: `CRC creates opportunities, tools, and strategies to develop nonprofits and community groups to strengthen Colorado.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Director of Life Labs <br /> <span class="font-normal">United Cerebral Palsy</span> <br /> <span class="text-sm font-normal">2012 - 2016</span>',
+        description: `Mission to promote the independence and inclusion of people with cerebral palsy, intellectual, developmental, and other disabilities through a network of affiliates and partnerships.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Founder <br /> <span class="font-normal">African Tech Network</span> <br /> <span class="text-sm font-normal">2010</span>',
+        description: `African Tech Network (ATN) served African technologists through creating economic opportunity, community, and continuing education.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Founder <br /> <span class="font-normal">webstartAfrica</span> <br /> <span class="text-sm font-normal">2009</span>',
+        description: `Webstart Africa focused on increasing access to turn-key technology stacks for emerging African entrepreneurs.`,
+        icon: 'tabler:briefcase',
+      },
+      {
+        title:
+          'Creative Director <br /> <span class="font-normal">GovTrends</span> <br /> <span class="text-sm font-normal">2006 - 2009</span>',
+        description: `GovTrends was a web development and design studio providing services to government entities and representatives and Fortune 500 companies.`,
+        icon: 'tabler:briefcase',
       },
     ]}
+    classes={{ container: 'max-w-3xl' }}
   />
 
-  <!-- Steps2 Widget ****************** -->
+  <!-- Steps Widget ****************** -->
 
-  <Steps2
-    title="Achievements"
-    subtitle="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi sagittis, quam nec venenatis lobortis, mi risus tempus nulla, sed porttitor est nibh at nulla."
-    isReversed={true}
-    callToAction={{
-      text: 'See more',
-      href: '/',
-    }}
+  <Fragment>
+  <Steps
+    id="resume"
+    title="Education"
     items={[
       {
-        title: 'Global reach',
-        description: 'Nam malesuada urna in enim imperdiet tincidunt. Phasellus non tincidunt nisi, at elementum mi.',
-        icon: 'tabler:globe',
-      },
-      {
-        title: 'Positive customer feedback and reviews',
-        description:
-          'Cras semper nulla leo, eget laoreet erat cursus sed. Praesent faucibus massa in purus iaculis dictum.',
-        icon: 'tabler:message-star',
-      },
-      {
-        title: 'Awards and recognition as industry experts',
-        description:
-          'Phasellus lacinia cursus velit, eu malesuada magna pretium eu. Etiam aliquet tellus purus, blandit lobortis ex rhoncus vitae.',
-        icon: 'tabler:award',
+        title: `Master of Arts in International Education & Human Development <br /> <span class="font-normal">George Washington University</span> <br /> <span class="text-sm font-normal">2010 - 2012</span>`,
+        icon: 'tabler:school',
       },
     ]}
+    classes={{ container: 'max-w-3xl' }}
   />
+  </Fragment>
 
-  <!-- Features2 Widget ************** -->
-
-  <Features2
-    title="Our locations"
-    tagline="Find us"
-    columns={4}
-    items={[
-      {
-        title: 'EE.UU',
-        description: '1234 Lorem Ipsum St, 12345, Miami',
-      },
-      {
-        title: 'Spain',
-        description: '5678 Lorem Ipsum St, 56789, Madrid',
-      },
-      {
-        title: 'Australia',
-        description: '9012 Lorem Ipsum St, 90123, Sydney',
-      },
-      {
-        title: 'Brazil',
-        description: '3456 Lorem Ipsum St, 34567, São Paulo',
-      },
-    ]}
-  />
-
-  <!-- Features2 Widget ************** -->
-
-  <Features2
-    title="Technical Support"
-    tagline="Contact us"
-    columns={2}
-    items={[
-      {
-        title: 'Chat with us',
-        description:
-          'Integer luctus laoreet libero, auctor varius purus rutrum sit amet. Ut nec molestie nisi, quis eleifend mi.',
-        icon: 'tabler:messages',
-      },
-      {
-        title: 'Call us',
-        description:
-          'Mauris faucibus finibus orci, in posuere elit viverra non. In hac habitasse platea dictumst. Cras lobortis metus a hendrerit congue.',
-        icon: 'tabler:headset',
-      },
-    ]}
-  />
 </Layout>
