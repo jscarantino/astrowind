@@ -5,7 +5,6 @@ import Header from '~/components/widgets/Header.astro';
 import Hero from '~/components/widgets/Hero.astro';
 import Content from '~/components/widgets/Content.astro';
 import Steps from '~/components/widgets/Steps.astro';
-// import { getPermalink } from '~/utils/permalinks';
 import { headerData } from '~/navigation';
 import Brands from '~/components/widgets/Brands.astro';
 
@@ -35,7 +34,7 @@ const metadata = {
     columns={3}
     items={[]}
     image={{
-      src: '../assets/images/selfie.png',
+      src: '~/assets/images/selfie.png',
       alt: 'Picture of Josef Scarantino',
       loading: 'eager',
     }}
