@@ -1,6 +1,6 @@
 site:
   name: Josef.co
-  site: 'https://astrowind.vercel.app'
+  site: 'https://josefscarantino.com'
   base: '/'
   trailingSlash: false
 
@@ -9,14 +9,14 @@ site:
 # Default SEO metadata
 metadata:
   title:
-    default: AstroWind
-    template: '%s — AstroWind'
-  description: "\U0001F680 Suitable for Startups, Small Business, Sass Websites, Professional Portfolios, Marketing Websites, Landing Pages & Blogs."
+    default: Josef Scarantino
+    template: '%s — Personal Website'
+  description: ""
   robots:
     index: true
     follow: true
   openGraph:
-    site_name: AstroWind
+    site_name: Josef Scarantino
     images:
       - url: '~/assets/images/default.png'
         width: 1200
