@@ -72,6 +72,7 @@ export const footerData = {
     { ariaLabel: 'LinkedIn', icon: 'tabler:brand-linkedin', href: 'https://www.linkedin.com/in/josefscarantino/', target:'_blank' },
     { ariaLabel: 'Instagram', icon: 'tabler:brand-instagram', href: 'https://www.instagram.com/jscarantinophotography', target:'_blank' },
     { ariaLabel: 'Github', icon: 'tabler:brand-github', href: 'https://github.com/jscarantino', target:'_blank' },
+    { ariaLabel: 'Buy Me a Coffee', icon: 'tabler:coffee', href: 'buymeacoffee.com/josefscarantino', target:'_blank' },
     { ariaLabel: 'RSS', icon: 'tabler:rss', href: getAsset('/rss.xml') },
   ],
   footNote: `

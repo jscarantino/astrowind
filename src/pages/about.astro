@@ -7,6 +7,7 @@ import Content from '~/components/widgets/Content.astro';
 import Steps from '~/components/widgets/Steps.astro';
 // import { getPermalink } from '~/utils/permalinks';
 import { headerData } from '~/navigation';
+import Brands from '~/components/widgets/Brands.astro';
 
 const metadata = {
   title: 'About Josef Scarantino',
@@ -31,11 +32,11 @@ const metadata = {
 
   <Content
     id="about"
-    columns={1}
+    columns={3}
     items={[]}
     image={{
-      src: '',
-      alt: '',
+      src: '/src/assets/images/selfie.png',
+      alt: 'Picture of Josef Scarantino',
       loading: 'eager',
     }}
   >
@@ -54,8 +55,10 @@ const metadata = {
       </p>
       <br />
       <p>
-        I'm currently building the transformation economy at <a href="https://forwardkind.com" target="_blank"
-          >Forwardkind</a
+        I'm currently building the transformation economy at <a
+          href="https://forwardkind.com"
+          target="_blank"
+          class="text-accent">Forwardkind</a
         >, exploring how a shared-ownership cooperative model can contribute to cultivating collective human potential.
       </p>
     </Fragment>
@@ -161,11 +164,138 @@ const metadata = {
       title="Education"
       items={[
         {
-          title: `Master of Arts in International Education & Human Development <br /> <span class="font-normal">George Washington University</span> <br /> <span class="text-sm font-normal">2010 - 2012</span>`,
+          title: `Master of Arts in International Education & Human Development <br /> <span class="font-normal">George Washington University</span>`,
+          icon: 'tabler:school',
+        },
+        {
+          title: `Startup Investor School <br /> <span class="font-normal">Y Combinator</span>`,
+          icon: 'tabler:school',
+        },
+        {
+          title: `Venture Associate Program <br /> <span class="font-normal">Republic</span>`,
+          icon: 'tabler:school',
+        },
+        {
+          title: `Venture Scout Program <br /> <span class="font-normal">Hawke Ventures</span>`,
           icon: 'tabler:school',
         },
       ]}
       classes={{ container: 'max-w-3xl' }}
     />
   </Fragment>
+
+  <!-- Brands Widget ****************** -->
+
+  <Brands
+    title="Volunteering"
+    subtitle="A sampling of brands where I've volunteered."
+    icons={[]}
+    images={[
+      {
+        src: '/src/assets/images/cdle-logo.png',
+        alt: 'Colorado Disability Opportunity Office',
+      },
+      {
+        src: '/src/assets/images/denver-art-museum-logo.png',
+        alt: 'Denver Art Museum',
+      },
+      {
+        src: '/src/assets/images/gildre-logo.png',
+        alt: 'Gildre',
+      },
+
+      {
+        src: '/src/assets/images/startout-logo.png',
+        alt: 'StartOut',
+      },
+      {
+        src: '/src/assets/images/truist-foundation-logo.png',
+        alt: 'Truist Foundation',
+      },
+      {
+        src: '/src/assets/images/black-ambition-logo.png',
+        alt: 'Black Ambition Prize',
+      },
+      {
+        src: '/src/assets/images/access-mode-logo.png',
+        alt: 'Access Mode',
+      },
+      {
+        src: '/src/assets/images/scale-ventures-logo.jpg',
+        alt: 'Scale Ventures',
+      },
+      {
+        src: '/src/assets/images/breakthrough-logo.png',
+        alt: 'Breakthrough',
+      },
+      {
+        src: '/src/assets/images/capital-startup-capital-logo.jpeg',
+        alt: 'Capital Startup Capital 2024',
+      },
+      {
+        src: '/src/assets/images/idea-gto-logo.png',
+        alt: 'Idea GTO',
+      },
+      {
+        src: '/src/assets/images/manos-accelerator-logo.png',
+        alt: 'Manos Accelerator',
+      },
+      {
+        src: '/src/assets/images/draper-university-logo.jpeg',
+        alt: 'Draper University',
+      },
+      {
+        src: '/src/assets/images/zane-access-logo.png',
+        alt: 'Zane Access',
+      },
+      {
+        src: '/src/assets/images/scalenl-accelerator-logo.png',
+        alt: 'ScaleNL Accelerator',
+      },
+      {
+        src: '/src/assets/images/denver-logo.png',
+        alt: 'Denver Global Landing Pad',
+      },
+      {
+        src: '/src/assets/images/extreme-tech-challenge-logo.png',
+        alt: 'Extreme Tech Challenge',
+      },
+      {
+        src: '/src/assets/images/verizon-forward-for-good-logo.jpeg',
+        alt: 'Verizon Forward for Good Accelerator',
+      },
+      {
+        src: '/src/assets/images/startup-grind-logo.png',
+        alt: 'Startup Grind',
+      },
+      {
+        src: '/src/assets/images/envision-accelerator-logo.png',
+        alt: 'Envision Accelerator',
+      },
+      {
+        src: '/src/assets/images/gsv-logo.png',
+        alt: 'Global Silicon Valley',
+      },
+      {
+        src: '/src/assets/images/chafee-county-edc-logo.png',
+        alt: 'Chafee County EDC',
+      },
+      {
+        src: '/src/assets/images/blackstone-launchpad-logo.png',
+        alt: 'Blackstone Launchpad',
+      },
+      {
+        src: '/src/assets/images/ubuffalo-colab-logo.png',
+        alt: 'UBuffalo CoLab',
+      },
+      {
+        src: '/src/assets/images/visible-hands-logo.jpeg',
+        alt: 'Visible Hands',
+      },
+      {
+        src: '/src/assets/images/regis-university-logo.jpg',
+        alt: 'Regis University Innovation Challenge',
+      },
+    ]}
+  />
 </Layout>
