@@ -1,7 +1,7 @@
 ---
 import Layout from '~/layouts/PageLayout.astro';
 import HeroText from '~/components/widgets/HeroText.astro';
-import CallToAction from '~/components/widgets/CallToAction.astro';
+import Steps2 from '~/components/widgets/Steps2.astro';
 
 const metadata = {
   title: 'Contact',
@@ -13,5 +13,22 @@ const metadata = {
 
   <HeroText tagline="Contact" title="Let's Connect" />
 
-  <CallToAction title="" subtitle="Reach me by email <b>hello at josef.co</b>." />
+  <!-- Steps2 Widget ****************** -->
+
+  <Steps2
+    title=""
+    subtitle="I typically respond within 48 hours."
+    items={[
+      {
+        title: 'Email',
+        description: '<a href="mailto:hello@josef.co">hello@josef.co</a>',
+        icon: 'tabler:mail',
+      },
+      {
+        title: 'Connect',
+        description: '<a href="https://www.linkedin.com/in/josefscarantino/">@JosefScarantino</a>',
+        icon: 'tabler:brand-linkedin',
+      },
+    ]}
+  />
 </Layout>
