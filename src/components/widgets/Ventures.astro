@@ -2,6 +2,8 @@
 import WidgetWrapper from '~/components/ui/WidgetWrapper.astro';
 import type { CallToAction, Widget } from '~/types';
 import Headline from '~/components/ui/Headline.astro';
+// import { Image } from 'astro:assets';
+// import FK from '~/assets/images/fk-logo.png';
 
 interface Props extends Widget {
   title?: string;
@@ -50,7 +52,7 @@ const {
                       <img
                         width="158"
                         height="48"
-                        src="../src/assets/images/fk-logo.png"
+                        src="/src/assets/images/fk-logo.png"
                         alt=""
                         class="col-span-2 max-h-12 w-full object-contain lg:col-span-1"
                       />
