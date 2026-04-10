@@ -1,6 +1,7 @@
 ---
 import Layout from '~/layouts/PageLayout.astro';
 import Hero from '~/components/widgets/Hero.astro';
+import Features2 from '~/components/widgets/Features2.astro';
 
 const metadata = {
   title: 'Josef.co - Personal site of Josef Scarantino',
@@ -22,4 +23,34 @@ const metadata = {
     >
   </Hero>
 
+  <!-- Features2 Widget ************** -->
+
+  <Features2
+    title="Current Projects"
+    subtitle="Here's where I'm currently spending my time."
+    items={[
+      {
+        title: 'Forwardkind Cooperative',
+        description:
+          '<a href="https://forwardkind.com" target="_blank">Forwardkind</a> is a member-owned ecosystem multiplying human potential by expanding access to transformational work while amplifying the collective impact of purpose-driven people.',
+        icon: 'tabler:seedling',
+      },
+      {
+        title: 'High Country Accelerator',
+        description:
+          'The <a href="https://rcedp.org/hca_lp" target="_blank">High Country Accelerator</a> is an 8-week startup business program designed to support early-stage entrepreneurs across the Yampa Valley in northwest Colorado.',
+        icon: 'tabler:mountain',
+      },
+      {
+        title: 'Denver Art Museum',
+        description:
+          'The <i><a href="https://www.denverartmuseum.org/en/blog/designing-accessibility" target="_blank">Designing for Accessibility</a></i> project at the Ellen Bruss Design Studio will function as a living laboratory for innovation that fosters connections between the disability community, museum staff, designers, and the public.',
+        icon: 'tabler:accessible',
+      },
+    ]}
+  >
+    <Fragment slot="bg">
+      <div class="absolute inset-0 bg-blue-50 dark:bg-transparent"></div>
+    </Fragment>
+  </Features2>
 </Layout>
