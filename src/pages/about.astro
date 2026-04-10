@@ -7,6 +7,7 @@ import Content from '~/components/widgets/Content.astro';
 import Steps from '~/components/widgets/Steps.astro';
 import { headerData } from '~/navigation';
 import Brands from '~/components/widgets/Brands.astro';
+import Ventures from '~/components/widgets/Ventures.astro';
 
 const metadata = {
   title: 'About Josef Scarantino',
@@ -195,5 +196,19 @@ const metadata = {
         alt: '',
       },
     ]}
+  />
+
+  <!-- Ventures Widget *********** -->
+
+  <Ventures
+    actions={[
+      {
+        variant: 'primary',
+        text: '',
+        href: '',
+      },
+    ]}
+    title="Ventures"
+    subtitle="Startups I've launched over my 20+ year career."
   />
 </Layout>
