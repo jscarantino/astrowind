@@ -7,7 +7,6 @@ import Content from '~/components/widgets/Content.astro';
 import Steps from '~/components/widgets/Steps.astro';
 import { headerData } from '~/navigation';
 import Brands from '~/components/widgets/Brands.astro';
-import Ventures from '~/components/widgets/Ventures.astro';
 
 const metadata = {
   title: 'About Josef Scarantino',
@@ -67,6 +66,20 @@ const metadata = {
       <div class="absolute inset-0 bg-blue-50 dark:bg-transparent"></div>
     </Fragment>
   </Content>
+
+  <!-- Brands Widget ****************** -->
+
+  <Brands
+    title="Ventures"
+    subtitle="I've started several ventures over the past 20+ years."
+    icons={[]}
+    images={[
+      {
+        src: '~/assets/images/ventures-logos.png',
+        alt: '',
+      },
+    ]}
+  />
 
   <!-- Steps Widget ****************** -->
 
@@ -153,7 +166,7 @@ const metadata = {
         icon: 'tabler:briefcase',
       },
     ]}
-    classes={{ container: 'max-w-3xl' }}
+    classes={{ container: 'max-w-4xl bg-neutral-100 rounded-2xl' }}
   />
 
   <!-- Steps Widget ****************** -->
@@ -197,6 +210,4 @@ const metadata = {
       },
     ]}
   />
-
-  
 </Layout>
